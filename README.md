@@ -48,6 +48,22 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 - Routes only guide inside their zone; they don't navigate between zones.
 - Developed without access to a live client, so please report anything odd (include the output of `/gc debug`).
 
+## Releasing
+
+Pushing a version tag builds the addon zip and publishes it, using the
+[BigWigs packager](https://github.com/BigWigsMods/packager) (`.github/workflows/release.yml`, `.pkgmeta`).
+
+```bash
+git tag v0.9
+git push origin v0.9
+```
+
+- The tag becomes the version shown in game (`## Version: @project-version@` in the TOC).
+- A GitHub release with the zip is always created.
+- Uploading to CurseForge needs two settings under **Settings > Secrets and variables > Actions**:
+  - secret `CF_API_KEY`: a CurseForge API token (CurseForge > account settings > API tokens)
+  - variable `CURSEFORGE_PROJECT_ID`: the project ID from the CurseForge project page's "About Project" box
+
 ## Credits
 
 - Route shapes are traced from maps by the author of Wowhead's ore farming guide. All credit for the routes themselves goes to them.
