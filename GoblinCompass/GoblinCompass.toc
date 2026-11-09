@@ -1,4 +1,4 @@
-## Interface: 11500
+## Interface: 16001
 ## Title: Goblin Compass
 ## Notes: A goblin's nose for ore, herbs and fish: an arrow to the nearest GatherMate2 node, or around a planned zone farming route.
 ## Author: Jess
