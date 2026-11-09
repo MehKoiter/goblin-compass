@@ -14,7 +14,7 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 - **Find Minerals** in a zone with a planned route starts that route. If the zone has more than one (The Barrens has Copper and Tin), it picks the highest ore your Mining skill can gather.
 - Anywhere else, it points at the nearest GatherMate2 node for that profession.
 - It re-picks when you change zones or switch tracking. Anything you choose by hand, or **Stop**, stays until you switch tracking again.
-- Turn it off in the options or with `/gc auto`.
+- Switch between **Automatic** and **Manual** at the top of the options page, in the right-click menu, or with `/gc auto`.
 
 ## Install
 
@@ -38,7 +38,7 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 | `/gc reverse` | walk routes the other way |
 | `/gc skip` `stop` `reset` | skip node/waypoint, stop, clear visited nodes |
 | `/gc filter copper` | node mode: only nodes whose name contains this |
-| `/gc auto` | turn auto-pick from tracking on/off |
+| `/gc auto` | switch between automatic (from tracking) and manual |
 | `/gc options` | open the options page |
 | `/gc debug` | print map ID and GatherMate2 data info (useful for bug reports) |
 

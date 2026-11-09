@@ -497,6 +497,16 @@ local function AutoPick(force)
   state.auto = true
 end
 
+-- Automatic: follow the tracking ability. Manual: only what you pick yourself.
+local function SetAutoMode(on)
+  DB().autoTrack = on and true or false
+  if on then
+    AutoPick(true)
+  else
+    state.auto = false  -- keep the current arrow, but it's yours now
+  end
+end
+
 local function OnTrackingMaybeChanged()
   local prof = ActiveTracking()
   if prof == state.lastTrack then return end
@@ -527,7 +537,7 @@ local function Debug()
   Print("current uiMapID: " .. tostring(mapID) .. (info and (" (" .. tostring(info.name) .. ")") or ""))
   Print("planned routes loaded: " .. #AllRoutes() .. ", routes for this zone: " .. #RoutesHere())
   Print("tracking: " .. tostring(ActiveTracking()) .. ", mining skill: " .. tostring(MiningSkill())
-    .. ", auto-pick: " .. (DB().autoTrack == false and "off" or "on"))
+    .. ", choosing: " .. (DB().autoTrack == false and "manual" or "automatic"))
   for _, prof in ipairs(PROF_ORDER) do
     for _, g in ipairs(SOURCES[prof]) do
       local db = _G[g]
@@ -567,6 +577,10 @@ local function InitMenu(self, level)
   local val = UIDROPDOWNMENU_MENU_VALUE
   if level == 1 then
     AddItem(level, "Goblin Compass", nil, { isTitle = true })
+    AddItem(level, "Automatic (from tracking)", function() SetAutoMode(true) end,
+      { notCheckable = false, checked = DB().autoTrack ~= false })
+    AddItem(level, "Manual", function() SetAutoMode(false) end,
+      { notCheckable = false, checked = DB().autoTrack == false })
     AddItem(level, "Gather nodes (GatherMate2)", nil, { isTitle = true })
     for _, prof in ipairs(PROF_ORDER) do
       AddItem(level, prof, function() SetProf(prof) end,
@@ -683,9 +697,38 @@ local psub = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 psub:SetPoint("TOPLEFT", ptitle, "BOTTOMLEFT", 0, -6)
 psub:SetText("Right-click the arrow or the minimap button for a quick menu.")
 
+-- Automatic / Manual choice
+local mlabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+mlabel:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", 0, -18)
+mlabel:SetText("What to follow")
+local function MakeRadio(name, label, x, y, hint)
+  local r = CreateFrame("CheckButton", name, panel, "UIRadioButtonTemplate")
+  r:SetPoint("TOPLEFT", mlabel, "BOTTOMLEFT", x, y)
+  local t = _G[name .. "Text"] or r:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  t:ClearAllPoints(); t:SetPoint("LEFT", r, "RIGHT", 4, 0)
+  t:SetText(label)
+  r.tip = hint
+  r:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(label)
+    GameTooltip:AddLine(self.tip, 1, 1, 1, true); GameTooltip:Show()
+  end)
+  r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  return r
+end
+local autoRadio = MakeRadio("GoblinCompassAutoRadio", "Automatic (from tracking)", 0, -6,
+  "Find Minerals, Find Herbs or Find Treasure picks the profession, and the zone you're in picks the route.")
+local manualRadio = MakeRadio("GoblinCompassManualRadio", "Manual", 0, -28,
+  "Nothing starts by itself. Pick a profession or route below, or from the menu.")
+local function RefreshModeRadios()
+  local on = DB().autoTrack ~= false
+  autoRadio:SetChecked(on); manualRadio:SetChecked(not on)
+end
+autoRadio:SetScript("OnClick", function() SetAutoMode(true); RefreshModeRadios() end)
+manualRadio:SetScript("OnClick", function() SetAutoMode(false); RefreshModeRadios() end)
+
 -- Node-mode profession dropdown
 local dlabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-dlabel:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", 0, -18)
+dlabel:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", 0, -78)
 dlabel:SetText("Gather nodes (GatherMate2)")
 local dd = CreateFrame("Frame", "GoblinCompassProfDropdown", panel, "UIDropDownMenuTemplate")
 dd:SetPoint("TOPLEFT", dlabel, "BOTTOMLEFT", -16, -2)
@@ -766,8 +809,6 @@ end
 local rev  = MakeCheck("GoblinCompassReverseCheck", "Walk planned routes in reverse", edit, -14, SetReverse)
 local lock = MakeCheck("GoblinCompassLockCheck", "Lock arrow position", rev, -2, function(v) DB().locked = v end)
 local mmCheck = MakeCheck("GoblinCompassMinimapCheck", "Show minimap button", lock, -2, SetMinimapShown)
-local autoCheck = MakeCheck("GoblinCompassAutoCheck", "Auto-pick from Find Minerals / Herbs / Treasure tracking", mmCheck, -2,
-  function(v) DB().autoTrack = v; if v then AutoPick(true) end end)
 
 local function MakeSlider(name, label, minv, maxv, step, anchor, onChange)
   local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
@@ -786,7 +827,7 @@ local function MakeSlider(name, label, minv, maxv, step, anchor, onChange)
   return s
 end
 
-local scale = MakeSlider("GoblinCompassScaleSlider", "Arrow size", 0.5, 2.5, 0.1, autoCheck, function(v)
+local scale = MakeSlider("GoblinCompassScaleSlider", "Arrow size", 0.5, 2.5, 0.1, mmCheck, function(v)
   DB().scale = v; arrow:SetScale(v)
 end)
 local arrive = MakeSlider("GoblinCompassArriveSlider", "Node arrival distance (yd)", 5, 40, 1, scale, function(v)
@@ -816,7 +857,7 @@ local function RefreshPanel()
   rev:SetChecked(DB().reverse and true or false)
   lock:SetChecked(DB().locked and true or false)
   mmCheck:SetChecked(not DB().hideMinimap)
-  autoCheck:SetChecked(DB().autoTrack ~= false)
+  RefreshModeRadios()
   scale:SetValue(DB().scale or 1)
   arrive:SetValue(DB().arrive or ARRIVE_YARDS)
   wpr:SetValue(DB().wpRadius or WP_RADIUS)
@@ -924,9 +965,8 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
     DB().filter = rest; state.target = nil
     Print(rest == "" and "filter cleared." or ("filter: " .. rest))
   elseif cmd == "auto" then
-    DB().autoTrack = (DB().autoTrack == false)
-    Print("auto-pick from tracking: " .. (DB().autoTrack and "on" or "off"))
-    if DB().autoTrack then AutoPick(true) end
+    SetAutoMode(DB().autoTrack == false)
+    Print("choosing: " .. (DB().autoTrack and "automatic (from tracking)" or "manual"))
   elseif cmd == "debug" then
     Debug()
   else
