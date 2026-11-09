@@ -7,6 +7,15 @@ A World of Warcraft **Classic Era** addon that puts a guide arrow on your screen
 - **Node mode** - points at the nearest known node for the profession you pick (Mining, Herbalism, Fishing, Treasure). Node locations come from [GatherMate2](https://www.curseforge.com/wow/addons/gathermate2), which you need installed. Nodes you reach are skipped, then come back after 10 minutes.
 - **Planned zone routes** - ignores GatherMate2 and walks you around a fixed farming loop for the zone you choose. 19 routes across 16 zones (copper, tin, iron, mithril, thorium), traced from the route maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide.
 
+## Auto-pick from tracking
+
+Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow starts by itself:
+
+- **Find Minerals** in a zone with a planned route starts that route. If the zone has more than one (The Barrens has Copper and Tin), it picks the highest ore your Mining skill can gather.
+- Anywhere else, it points at the nearest GatherMate2 node for that profession.
+- It re-picks when you change zones or switch tracking. Anything you choose by hand, or **Stop**, stays until you switch tracking again.
+- Turn it off in the options or with `/gc auto`.
+
 ## Install
 
 1. Download this repo (green **Code** button, **Download ZIP**) or a release zip.
@@ -29,6 +38,7 @@ A World of Warcraft **Classic Era** addon that puts a guide arrow on your screen
 | `/gc reverse` | walk routes the other way |
 | `/gc skip` `stop` `reset` | skip node/waypoint, stop, clear visited nodes |
 | `/gc filter copper` | node mode: only nodes whose name contains this |
+| `/gc auto` | turn auto-pick from tracking on/off |
 | `/gc options` | open the options page |
 | `/gc debug` | print map ID and GatherMate2 data info (useful for bug reports) |
 

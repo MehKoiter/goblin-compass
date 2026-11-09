@@ -12,6 +12,9 @@ local WP_RADIUS    = 50     -- route mode: waypoint counts as reached inside thi
 local PROF_ORDER = { "Mining", "Herbalism", "Fishing", "Treasure" }
 local PROF_TYPE  = { Mining = "Mining", Herbalism = "Herb Gathering", Fishing = "Fishing", Treasure = "Treasure" }
 local ORE_ORDER  = { "Copper", "Tin", "Iron", "Mithril", "Thorium" }
+local ORE_SKILL  = { Copper = 1, Tin = 65, Iron = 125, Mithril = 175, Thorium = 230 }  -- Mining skill needed
+-- tracking abilities -> profession (Find Minerals, Find Herbs, Find Treasure)
+local TRACK_SPELLS = { [2580] = "Mining", [2383] = "Herbalism", [2481] = "Treasure" }
 local ALIASES = {
   mining = "Mining", mine = "Mining", ore = "Mining",
   herb = "Herbalism", herbs = "Herbalism", herbalism = "Herbalism",
@@ -37,6 +40,9 @@ local state = {
   mode = nil,               -- nil | "nodes" | "route"
   prof = nil, mapID = nil, nodes = nil, target = nil, visited = {},
   route = nil, wp = nil, lastRepick = 0,
+  auto = false,             -- current guidance was picked automatically from tracking
+  userStopped = false,      -- user pressed stop: don't auto-start again until tracking changes
+  lastTrack = nil,          -- profession of the last seen tracking ability
   E = nil, S = nil, axesMap = nil,
 }
 
@@ -373,25 +379,129 @@ end)
 ---------------------------------------------------------------------------
 local function Stop(silent)
   state.mode, state.prof, state.route, state.nodes, state.target, state.wp = nil, nil, nil, nil, nil, nil
+  state.auto = false
   arrow:Hide()
-  if not silent then Print("stopped.") end
+  if not silent then state.userStopped = true; Print("stopped.") end
 end
 
-local function SetProf(prof)
+local function SetProf(prof, auto)
   if not prof then return Stop() end
   TryLoadData()
   state.mode, state.prof, state.route = "nodes", prof, nil
   state.nodes, state.target, state.mapID, state.wp = nil, nil, nil, nil
+  state.auto, state.userStopped = auto and true or false, false
   arrow:Show()
-  Print("guiding to the nearest " .. prof .. " node. Drag the arrow to move it.")
+  Print((auto and "(auto) " or "") .. "guiding to the nearest " .. prof .. " node. Drag the arrow to move it.")
 end
 
-local function StartRoute(route)
+local function StartRoute(route, auto)
   if not route then return Stop() end
   state.mode, state.route, state.prof = "route", route, nil
   state.nodes, state.target, state.wp = nil, nil, nil
+  state.auto, state.userStopped = auto and true or false, false
   arrow:Show()
-  Print("route: " .. RouteLabel(route) .. (DB().reverse and " (reverse)" or "") .. ". Follow the arrow around the loop.")
+  Print((auto and "(auto) " or "") .. "route: " .. route.ore .. " - " .. RouteLabel(route) .. (DB().reverse and " (reverse)" or "") .. ". Follow the arrow around the loop.")
+end
+
+---------------------------------------------------------------------------
+-- Auto-pick from the active tracking ability (Find Minerals / Find Herbs / Find Treasure)
+---------------------------------------------------------------------------
+local function TrackSpellName(id)
+  local name = GetSpellInfo and GetSpellInfo(id)
+  if not name and C_Spell and C_Spell.GetSpellName then name = C_Spell.GetSpellName(id) end
+  return name
+end
+
+local function TrackSpellIcon(id)
+  if GetSpellTexture then return GetSpellTexture(id) end
+  if C_Spell and C_Spell.GetSpellTexture then return C_Spell.GetSpellTexture(id) end
+end
+
+-- which gathering profession the player is tracking right now (or nil)
+local function ActiveTracking()
+  -- 1) minimap tracking list
+  if C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo then
+    for i = 1, C_Minimap.GetNumTrackingTypes() or 0 do
+      local a, _, c, _, _, f = C_Minimap.GetTrackingInfo(i)
+      local name, active, spellID
+      if type(a) == "table" then name, active, spellID = a.name, a.active, a.spellID
+      else name, active, spellID = a, c, f end
+      if active then
+        if spellID and TRACK_SPELLS[spellID] then return TRACK_SPELLS[spellID] end
+        for id, prof in pairs(TRACK_SPELLS) do
+          if name and name == TrackSpellName(id) then return prof end
+        end
+      end
+    end
+  end
+  -- 2) the single active tracking icon shown on the minimap
+  local tex = GetTrackingTexture and GetTrackingTexture()
+  if tex then
+    for id, prof in pairs(TRACK_SPELLS) do
+      local icon = TrackSpellIcon(id)
+      if icon and (icon == tex or tostring(icon):lower() == tostring(tex):lower()) then return prof end
+    end
+  end
+  -- 3) tracking shown as a buff
+  if UnitBuff then
+    for i = 1, 40 do
+      local name, _, _, _, _, _, _, _, _, spellID = UnitBuff("player", i)
+      if not name then break end
+      if spellID and TRACK_SPELLS[spellID] then return TRACK_SPELLS[spellID] end
+    end
+  end
+end
+
+local function MiningSkill()
+  if not (GetNumSkillLines and GetSkillLineInfo) then return end
+  local want = TrackSpellName(2575) or "Mining"  -- spell 2575 is "Mining" in the client's language
+  for i = 1, GetNumSkillLines() do
+    local name, isHeader, _, rank = GetSkillLineInfo(i)
+    if not isHeader and (name == want or name == "Mining") then return rank end
+  end
+end
+
+-- the best planned route for this zone: the highest ore your Mining skill can gather
+local function BestRouteHere()
+  local here = RoutesHere()
+  if #here == 0 then return end
+  local skill = MiningSkill()
+  local best
+  for _, r in ipairs(here) do
+    local need = ORE_SKILL[r.ore] or 1
+    if not skill or skill >= need then
+      if not best or need > (ORE_SKILL[best.ore] or 1) then best = r end
+    end
+  end
+  return best or here[1]
+end
+
+-- force: tracking just changed, so override whatever was chosen by hand
+local function AutoPick(force)
+  if DB().autoTrack == false then return end
+  local prof = ActiveTracking()
+  if not prof then
+    if state.auto and force then Stop(true) end  -- switched tracking off / to something else
+    return
+  end
+  if not force and ((state.mode and not state.auto) or state.userStopped) then return end
+  if prof == "Mining" then
+    local r = BestRouteHere()
+    if r then
+      if not (state.mode == "route" and state.route == r) then StartRoute(r, true) end
+      state.auto = true
+      return
+    end
+  end
+  if not (state.mode == "nodes" and state.prof == prof) then SetProf(prof, true) end
+  state.auto = true
+end
+
+local function OnTrackingMaybeChanged()
+  local prof = ActiveTracking()
+  if prof == state.lastTrack then return end
+  state.lastTrack, state.userStopped = prof, false
+  AutoPick(true)
 end
 
 local function Skip()
@@ -416,6 +526,8 @@ local function Debug()
   local info = mapID and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
   Print("current uiMapID: " .. tostring(mapID) .. (info and (" (" .. tostring(info.name) .. ")") or ""))
   Print("planned routes loaded: " .. #AllRoutes() .. ", routes for this zone: " .. #RoutesHere())
+  Print("tracking: " .. tostring(ActiveTracking()) .. ", mining skill: " .. tostring(MiningSkill())
+    .. ", auto-pick: " .. (DB().autoTrack == false and "off" or "on"))
   for _, prof in ipairs(PROF_ORDER) do
     for _, g in ipairs(SOURCES[prof]) do
       local db = _G[g]
@@ -654,6 +766,8 @@ end
 local rev  = MakeCheck("GoblinCompassReverseCheck", "Walk planned routes in reverse", edit, -14, SetReverse)
 local lock = MakeCheck("GoblinCompassLockCheck", "Lock arrow position", rev, -2, function(v) DB().locked = v end)
 local mmCheck = MakeCheck("GoblinCompassMinimapCheck", "Show minimap button", lock, -2, SetMinimapShown)
+local autoCheck = MakeCheck("GoblinCompassAutoCheck", "Auto-pick from Find Minerals / Herbs / Treasure tracking", mmCheck, -2,
+  function(v) DB().autoTrack = v; if v then AutoPick(true) end end)
 
 local function MakeSlider(name, label, minv, maxv, step, anchor, onChange)
   local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
@@ -672,7 +786,7 @@ local function MakeSlider(name, label, minv, maxv, step, anchor, onChange)
   return s
 end
 
-local scale = MakeSlider("GoblinCompassScaleSlider", "Arrow size", 0.5, 2.5, 0.1, mmCheck, function(v)
+local scale = MakeSlider("GoblinCompassScaleSlider", "Arrow size", 0.5, 2.5, 0.1, autoCheck, function(v)
   DB().scale = v; arrow:SetScale(v)
 end)
 local arrive = MakeSlider("GoblinCompassArriveSlider", "Node arrival distance (yd)", 5, 40, 1, scale, function(v)
@@ -702,6 +816,7 @@ local function RefreshPanel()
   rev:SetChecked(DB().reverse and true or false)
   lock:SetChecked(DB().locked and true or false)
   mmCheck:SetChecked(not DB().hideMinimap)
+  autoCheck:SetChecked(DB().autoTrack ~= false)
   scale:SetValue(DB().scale or 1)
   arrive:SetValue(DB().arrive or ARRIVE_YARDS)
   wpr:SetValue(DB().wpRadius or WP_RADIUS)
@@ -732,6 +847,9 @@ end
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+ev:RegisterEvent("MINIMAP_UPDATE_TRACKING")
+ev:RegisterUnitEvent("UNIT_AURA", "player")
 ev:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON_NAME then
     local db = DB()
@@ -743,6 +861,15 @@ ev:SetScript("OnEvent", function(_, event, name)
   elseif event == "ZONE_CHANGED_NEW_AREA" then
     state.nodes, state.target, state.mapID, state.axesMap = nil, nil, nil, nil
     if state.mode == "route" then state.wp = nil end
+    AutoPick(false)
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    -- give the map and tracking info a moment to settle after loading
+    C_Timer.After(2, function()
+      state.lastTrack = ActiveTracking()
+      AutoPick(false)
+    end)
+  elseif event == "MINIMAP_UPDATE_TRACKING" or event == "UNIT_AURA" then
+    OnTrackingMaybeChanged()
   end
 end)
 
@@ -796,9 +923,13 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
   elseif cmd == "filter" then
     DB().filter = rest; state.target = nil
     Print(rest == "" and "filter cleared." or ("filter: " .. rest))
+  elseif cmd == "auto" then
+    DB().autoTrack = (DB().autoTrack == false)
+    Print("auto-pick from tracking: " .. (DB().autoTrack and "on" or "off"))
+    if DB().autoTrack then AutoPick(true) end
   elseif cmd == "debug" then
     Debug()
   else
-    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | debug")
+    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | auto | debug")
   end
 end
