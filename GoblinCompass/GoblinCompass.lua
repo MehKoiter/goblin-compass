@@ -18,12 +18,12 @@ local ALIASES = {
   fish = "Fishing", fishing = "Fishing",
   treasure = "Treasure", chest = "Treasure",
 }
--- icon shown in the middle of the compass for each profession
-local PROF_ICON = {
-  Mining    = "Interface\\Icons\\Trade_Mining",
-  Herbalism = "Interface\\Icons\\Trade_Herbalism",
-  Fishing   = "Interface\\Icons\\Trade_Fishing",
-  Treasure  = "Interface\\Icons\\INV_Misc_Bag_10",
+-- arrow tint for each profession (r, g, b)
+local PROF_COLOR = {
+  Mining    = { 1.00, 0.50, 0.10 },
+  Herbalism = { 0.35, 0.90, 0.30 },
+  Fishing   = { 0.30, 0.60, 1.00 },
+  Treasure  = { 1.00, 0.82, 0.15 },
 }
 -- GatherMate2 saved-variable tables (your own scanned nodes) + shipped data module tables
 local SOURCES = {
@@ -219,7 +219,7 @@ end
 -- Arrow frame
 ---------------------------------------------------------------------------
 local arrow = CreateFrame("Frame", "GoblinCompassFrame", UIParent)
-arrow:SetSize(84, 84)
+arrow:SetSize(64, 64)
 arrow:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
 arrow:SetMovable(true)
 arrow:EnableMouse(true)
@@ -227,28 +227,14 @@ arrow:RegisterForDrag("LeftButton")
 arrow:SetClampedToScreen(true)
 arrow:Hide()
 
--- profession icon in the middle; a small pointer orbits it towards the target
-local ICON_SIZE, POINTER_SIZE, ORBIT = 32, 22, 30
-arrow.icon = arrow:CreateTexture(nil, "ARTWORK")
-arrow.icon:SetSize(ICON_SIZE, ICON_SIZE)
-arrow.icon:SetPoint("CENTER")
-arrow.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-if arrow.icon.SetMask then arrow.icon:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") end
-arrow.icon:SetTexture(PROF_ICON.Mining)
+arrow.tex = arrow:CreateTexture(nil, "ARTWORK")
+arrow.tex:SetSize(56, 56)
+arrow.tex:SetPoint("CENTER")
+arrow.tex:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\arrow")
 
-arrow.ring = arrow:CreateTexture(nil, "OVERLAY")
--- same proportions as a minimap button (20px icon inside a 53px border at 7,-5)
-arrow.ring:SetSize(ICON_SIZE * 53 / 20, ICON_SIZE * 53 / 20)
-arrow.ring:SetPoint("TOPLEFT", arrow.icon, "TOPLEFT", -ICON_SIZE * 7 / 20, ICON_SIZE * 5 / 20)
-arrow.ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-
-arrow.tex = arrow:CreateTexture(nil, "OVERLAY", nil, 1)
-arrow.tex:SetSize(POINTER_SIZE, POINTER_SIZE)
-arrow.tex:SetPoint("CENTER", arrow, "CENTER", 0, ORBIT)
-arrow.tex:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
-
-local function SetIcon(prof)
-  arrow.icon:SetTexture(PROF_ICON[prof] or PROF_ICON.Mining)
+local function SetColor(prof)
+  local c = PROF_COLOR[prof] or PROF_COLOR.Mining
+  arrow.tex:SetVertexColor(c[1], c[2], c[3])
 end
 
 arrow.label = arrow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -278,12 +264,8 @@ local function Aim(px, py, tx, ty)
   local facing = GetPlayerFacing()
   arrow.tex:Show()
   if facing then
-    -- angle (CCW from north) to target, minus player facing (also CCW from north):
-    -- the pointer both rotates to that angle and sits on the orbit at that angle
-    local a = atan2(-dE, -dS) - facing
-    arrow.tex:SetRotation(a)
-    arrow.tex:ClearAllPoints()
-    arrow.tex:SetPoint("CENTER", arrow, "CENTER", -sin(a) * ORBIT, cos(a) * ORBIT)
+    -- angle (CCW from north) to target, minus player facing (also CCW from north)
+    arrow.tex:SetRotation(atan2(-dE, -dS) - facing)
   end
   return dist
 end
@@ -316,8 +298,7 @@ local function UpdateNodes(mapID, x, y, px, py)
     MarkVisited(t); state.target = nil
     return
   end
-  arrow.tex:SetVertexColor(1, 1, 1)
-  SetIcon(state.prof)
+  SetColor(state.prof)
   Aim(px, py, t.wx, t.wy)
   arrow.label:SetText(NodeName(state.prof, t.id))
   arrow.label2:SetText(string.format("%.0f yd", dist))
@@ -364,8 +345,7 @@ local function UpdateRoute(mapID, x, y, px, py)
   end
 
   local wp = w[state.wp]
-  arrow.tex:SetVertexColor(0.55, 1, 0.55)
-  SetIcon(route.prof or "Mining")
+  SetColor(route.prof or "Mining")
   local dist = Aim(px, py, wp[1], wp[2])
   arrow.label:SetText(route.zone .. " - " .. route.ore)
   arrow.label2:SetText(string.format("%.0f yd", dist))
