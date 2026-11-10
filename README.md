@@ -38,14 +38,28 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 | `/gc reverse` | walk routes the other way |
 | `/gc skip` `stop` `reset` | skip node/waypoint, stop, clear visited nodes |
 | `/gc filter copper` | node mode: only nodes whose name contains this |
+| `/gc record` | record a new route by walking it (see [Adding routes](docs/adding-routes.md)) |
 | `/gc auto` | switch between automatic (from tracking) and manual |
 | `/gc options` | open the options page |
 | `/gc debug` | print map ID and GatherMate2 data info (useful for bug reports) |
+
+## Adding routes (herbs, fishing, treasure and more)
+
+Routes aren't limited to mining. Any profession can have them, and you can record one by walking it in game:
+
+```
+/gc record        start recording (turn on Find Herbs / Find Minerals first)
+/gc record point  add a waypoint where you stand
+/gc record stop   save it, then /reload and copy it from SavedVariables
+```
+
+See **[docs/adding-routes.md](docs/adding-routes.md)** for the route format, the fields, how to test a route, and how to send it in.
 
 ## Notes and limitations
 
 - Routes are traced from images, so they are accurate to about 1-2% of the map. Good for following a loop, not exact. The Arathi Highlands mithril route is approximate.
 - Routes only guide inside their zone; they don't navigate between zones.
+- The bundled routes are mining only so far. Herbalism, Fishing and Treasure use node mode until someone adds routes for them.
 - Developed without access to a live client, so please report anything odd (include the output of `/gc debug`).
 
 ## Releasing

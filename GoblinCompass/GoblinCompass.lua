@@ -13,6 +13,7 @@ local PROF_ORDER = { "Mining", "Herbalism", "Fishing", "Treasure" }
 local PROF_TYPE  = { Mining = "Mining", Herbalism = "Herb Gathering", Fishing = "Fishing", Treasure = "Treasure" }
 local ORE_ORDER  = { "Copper", "Tin", "Iron", "Mithril", "Thorium" }
 local ORE_SKILL  = { Copper = 1, Tin = 65, Iron = 125, Mithril = 175, Thorium = 230 }  -- Mining skill needed
+local REC_STEP   = 40     -- /gc record: drop a waypoint every this many yards walked
 -- tracking abilities -> profession (Find Minerals, Find Herbs, Find Treasure)
 local TRACK_SPELLS = { [2580] = "Mining", [2383] = "Herbalism", [2481] = "Treasure" }
 local ALIASES = {
@@ -186,6 +187,20 @@ local function RoutesHere()
   return out
 end
 
+local function RouteProf(r) return r.prof or "Mining" end
+local function RouteSkill(r) return r.skill or ORE_SKILL[r.ore] or 1 end
+
+-- what the routes gather (r.ore: an ore, herb, fish...), known ores first, then in file order
+local function RouteResources()
+  local out, seen = {}, {}
+  local function add(name) if name and not seen[name] then seen[name] = true; out[#out + 1] = name end end
+  for _, ore in ipairs(ORE_ORDER) do
+    for _, r in ipairs(AllRoutes()) do if r.ore == ore then add(ore); break end end
+  end
+  for _, r in ipairs(AllRoutes()) do add(r.ore) end
+  return out
+end
+
 -- every word in the query must appear somewhere in the route's id/zone/ore/note
 local function FindRoutes(q)
   q = (q or ""):lower():gsub("[%-']", " ")
@@ -193,7 +208,7 @@ local function FindRoutes(q)
   for w in q:gmatch("%S+") do words[#words + 1] = w end
   local out = {}
   for _, r in ipairs(AllRoutes()) do
-    local hay = (r.id .. " " .. r.zone .. " " .. r.ore .. " " .. (r.note or "")):lower():gsub("[%-']", " ")
+    local hay = (r.id .. " " .. r.zone .. " " .. r.ore .. " " .. RouteProf(r) .. " " .. (r.note or "")):lower():gsub("[%-']", " ")
     local ok = true
     for _, w in ipairs(words) do
       if not hay:find(w, 1, true) then ok = false; break end
@@ -351,7 +366,7 @@ local function UpdateRoute(mapID, x, y, px, py)
   end
 
   local wp = w[state.wp]
-  SetColor(route.prof or "Mining")
+  SetColor(RouteProf(route))
   local dist = Aim(px, py, wp[1], wp[2])
   arrow.label:SetText(route.zone .. " - " .. route.ore)
   arrow.label2:SetText(string.format("%.0f yd", dist))
@@ -452,28 +467,30 @@ local function ActiveTracking()
   end
 end
 
-local function MiningSkill()
+-- the player's skill in a gathering profession (nil if unknown)
+local function ProfSkill(prof)
   if not (GetNumSkillLines and GetSkillLineInfo) then return end
-  local want = TrackSpellName(2575) or "Mining"  -- spell 2575 is "Mining" in the client's language
+  local want = prof
+  if prof == "Mining" then want = TrackSpellName(2575) or "Mining" end  -- spell 2575 is "Mining" in the client's language
   for i = 1, GetNumSkillLines() do
     local name, isHeader, _, rank = GetSkillLineInfo(i)
-    if not isHeader and (name == want or name == "Mining") then return rank end
+    if not isHeader and (name == want or name == prof) then return rank end
   end
 end
+local function MiningSkill() return ProfSkill("Mining") end
 
--- the best planned route for this zone: the highest ore your Mining skill can gather
-local function BestRouteHere()
-  local here = RoutesHere()
-  if #here == 0 then return end
-  local skill = MiningSkill()
-  local best
-  for _, r in ipairs(here) do
-    local need = ORE_SKILL[r.ore] or 1
-    if not skill or skill >= need then
-      if not best or need > (ORE_SKILL[best.ore] or 1) then best = r end
+-- the best planned route for this zone and profession: the highest one your skill allows
+local function BestRouteHere(prof)
+  local skill = ProfSkill(prof)
+  local best, first
+  for _, r in ipairs(RoutesHere()) do
+    if RouteProf(r) == prof then
+      first = first or r
+      local need = RouteSkill(r)
+      if (not skill or skill >= need) and (not best or need > RouteSkill(best)) then best = r end
     end
   end
-  return best or here[1]
+  return best or first
 end
 
 -- force: tracking just changed, so override whatever was chosen by hand
@@ -485,13 +502,11 @@ local function AutoPick(force)
     return
   end
   if not force and ((state.mode and not state.auto) or state.userStopped) then return end
-  if prof == "Mining" then
-    local r = BestRouteHere()
-    if r then
-      if not (state.mode == "route" and state.route == r) then StartRoute(r, true) end
-      state.auto = true
-      return
-    end
+  local r = BestRouteHere(prof)
+  if r then
+    if not (state.mode == "route" and state.route == r) then StartRoute(r, true) end
+    state.auto = true
+    return
   end
   if not (state.mode == "nodes" and state.prof == prof) then SetProf(prof, true) end
   state.auto = true
@@ -602,7 +617,7 @@ local function InitMenu(self, level)
           { notCheckable = false, checked = (state.mode == "route" and state.route == r) })
       end
     end
-    for _, ore in ipairs(ORE_ORDER) do
+    for _, ore in ipairs(RouteResources()) do
       AddItem(level, ore, nil, { hasArrow = true, value = "ORE:" .. ore, keepShownOnClick = true })
     end
   elseif level == 3 and type(val) == "string" and val:sub(1, 4) == "ORE:" then
@@ -769,7 +784,7 @@ UIDropDownMenu_Initialize(rd, function(self, level)
   info.text, info.checked = "Off", (state.mode ~= "route")
   info.func = function() if state.mode == "route" then Stop() end; RefreshDropdownText() end
   UIDropDownMenu_AddButton(info, level)
-  for _, ore in ipairs(ORE_ORDER) do
+  for _, ore in ipairs(RouteResources()) do
     local h = UIDropDownMenu_CreateInfo()
     h.text, h.isTitle, h.notCheckable = ore, true, true
     UIDropDownMenu_AddButton(h, level)
@@ -914,9 +929,79 @@ ev:SetScript("OnEvent", function(_, event, name)
   end
 end)
 
+---------------------------------------------------------------------------
+-- Route recorder: /gc record walks a loop and saves it in Routes.lua format
+---------------------------------------------------------------------------
+local rec  -- { map, zone, prof, pts = {x,y,...}, lastWX, lastWY }
+local function NPts(r) return floor(#r.pts / 2) end
+local function Num(v) return (string.format("%.1f", v):gsub("%.0$", "")) end  -- 45.0 -> "45", 45.25 -> "45.3"
+
+local function RecAdd(force)
+  local mapID, x, y = PlayerPos()
+  if not mapID then return end
+  if mapID ~= rec.map then
+    if force then Print("you're on a different map than the recording; point not added.") end
+    return
+  end
+  local wx, wy = ToWorld(mapID, x, y)
+  if not force and rec.lastWX and wx then
+    local d = sqrt((wx - rec.lastWX) ^ 2 + (wy - rec.lastWY) ^ 2)
+    if d < (DB().recStep or REC_STEP) then return end
+  end
+  rec.pts[#rec.pts + 1] = x * 100
+  rec.pts[#rec.pts + 1] = y * 100
+  rec.lastWX, rec.lastWY = wx, wy
+  if force then Print("point " .. NPts(rec) .. " added.") end
+end
+
+local recTicker
+local function RecordCommand(arg)
+  local sub, rest = (arg or ""):match("^(%S*)%s*(.-)$")
+  if sub == "" or sub == "start" then
+    if rec then return Print("already recording (" .. NPts(rec) .. " points). /gc record stop to save.") end
+    local mapID = C_Map.GetBestMapForUnit("player")
+    local info = mapID and C_Map.GetMapInfo(mapID)
+    if not info then return Print("can't read your map position here.") end
+    rec = { map = mapID, zone = info.name, pts = {}, prof = state.lastTrack or "Mining" }
+    RecAdd(false)  -- first point: always added, since there's no previous one
+    recTicker = C_Timer.NewTicker(0.5, function() RecAdd(false) end)
+    Print("recording a " .. rec.prof .. " route in " .. rec.zone .. ". Walk your loop; a point is added every "
+      .. (DB().recStep or REC_STEP) .. " yd. /gc record point adds one now, /gc record stop saves.")
+  elseif sub == "point" then
+    if not rec then return Print("not recording. /gc record to start.") end
+    RecAdd(true)
+  elseif sub == "stop" or sub == "cancel" then
+    if not rec then return Print("not recording.") end
+    if recTicker then recTicker:Cancel(); recTicker = nil end
+    local r = rec; rec = nil
+    if sub == "cancel" then return Print("recording thrown away.") end
+    if #r.pts < 6 then return Print("only " .. NPts(r) .. " points recorded; a route needs at least 3. Nothing saved.") end
+    local nums = {}
+    for i = 1, #r.pts, 2 do nums[#nums + 1] = Num(r.pts[i]) .. "," .. Num(r.pts[i + 1]) end
+    local id = (r.zone .. "-" .. r.prof):lower():gsub("'", ""):gsub("[^%w]+", "-")
+    local entry = string.format('{ id="%s", zone="%s", map=%d, prof="%s", ore="CHANGE ME", levels="?",\n    pts={ %s } },',
+      id, r.zone, r.map, r.prof, table.concat(nums, ", "))
+    local db = DB()
+    db.recorded = db.recorded or {}
+    db.recorded[#db.recorded + 1] = entry
+    Print("saved " .. NPts(r) .. " points as recording #" .. #db.recorded
+      .. ". Log out or /reload, then copy it from WTF\\Account\\<account>\\SavedVariables\\GoblinCompass.lua (look for \"recorded\").")
+  elseif sub == "clear" then
+    DB().recorded = nil
+    Print("saved recordings cleared.")
+  elseif sub == "step" then
+    local n = tonumber(rest)
+    if not n or n < 5 then return Print("usage: /gc record step <yards>, e.g. /gc record step 40") end
+    DB().recStep = n
+    Print("recording step: " .. n .. " yd")
+  else
+    Print("/gc record [start] | point | stop | cancel | clear | step <yards>")
+  end
+end
+
 local function ListRoutes()
   Print("planned routes (use /gc route <text>):")
-  for _, ore in ipairs(ORE_ORDER) do
+  for _, ore in ipairs(RouteResources()) do
     for _, r in ipairs(AllRoutes()) do
       if r.ore == ore then print("  " .. ore .. ": " .. RouteLabel(r) .. "  |cff888888[" .. r.id .. "]|r") end
     end
@@ -964,12 +1049,14 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
   elseif cmd == "filter" then
     DB().filter = rest; state.target = nil
     Print(rest == "" and "filter cleared." or ("filter: " .. rest))
+  elseif cmd == "record" then
+    RecordCommand(rest)
   elseif cmd == "auto" then
     SetAutoMode(DB().autoTrack == false)
     Print("choosing: " .. (DB().autoTrack and "automatic (from tracking)" or "manual"))
   elseif cmd == "debug" then
     Debug()
   else
-    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | auto | debug")
+    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | auto | record | debug")
   end
 end

@@ -4,6 +4,7 @@ package-as: GoblinCompass
 
 ignore:
   - README.md
+  - docs
   - media
   - tools
 

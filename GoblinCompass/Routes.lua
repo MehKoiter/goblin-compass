@@ -3,6 +3,8 @@
 -- (https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores).
 -- Coordinates are zone-map percentages (x,y pairs, 0-100) in the order you walk them.
 -- map = Classic uiMapID. All routes are loops (the last point connects back to the first).
+-- prof = "Mining" (default) / "Herbalism" / "Fishing" / "Treasure"; ore = what the route gathers
+-- (any ore, herb or fish name); skill = optional skill needed. Full guide: docs/adding-routes.md
 GoblinCompassRoutes = {
   { id="elwynn-forest-copper", zone="Elwynn Forest", map=1429, ore="Copper", levels="1-10", faction="Alliance",
     pts={ 73.3,35.3, 76.8,35.7, 81,38.4, 80.8,43.9, 80.6,49.3, 80.5,54.8, 81.9,56.9, 86.3,60.1, 90.8,63.2, 90.6,69.1, 91.9,74.8, 91.3,77.8, 88.7,78.4, 85.5,76.9, 82.2,76.9, 79.7,77.4, 77.2,78, 73.8,74.3, 70.4,70.6, 66.6,72.7, 62.8,74.8, 59.9,79, 57.4,80.7, 54.9,82.3, 52.6,81.3, 51.7,76.4, 48.9,75.4, 46.2,74.3, 44.2,76, 42.4,76, 39.5,71.6, 36,72.4, 32.5,73.1, 30.1,74.3, 27.6,75.5, 23.6,75.8, 22.4,74.9, 22,70.4, 24.9,69.2, 27.8,67.9, 28.1,61.1, 29.1,59.5, 29.6,55.4, 33,54, 36.3,52.5, 39.8,52.2, 41.9,49.4, 43.3,49.5, 44.8,51.5, 46.6,57.7, 47.6,58.6, 52.3,58.6, 55.8,57.3, 59.3,56.1, 62.7,54.8, 65.2,56.6, 66.9,56.5, 67.3,52.2, 67.6,47.9, 65.4,43.7, 65.2,39.6, 67.5,36, 69.8,34.8 } },
