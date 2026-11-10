@@ -36,7 +36,7 @@ Switch on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow s
 
 ### Easy to control
 - **Minimap button:** left-click to turn Goblin Compass on or off (the icon goes grey when it's off), right-click for the options page. It starts off after install, so it never gets in your way until you want it.
-- **Right-click the arrow** for the same quick menu.
+- **Right-click the arrow** for a quick menu: pick a profession or route, skip a node, or stop.
 - **Options page** (Esc → Options → AddOns → Goblin Compass): automatic or manual mode, profession and route pickers, node name filter, reverse route direction, arrow size, arrival distance and waypoint radius.
 
 ---

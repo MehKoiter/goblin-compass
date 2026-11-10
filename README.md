@@ -14,7 +14,7 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 - **Find Minerals** in a zone with a planned route starts that route. If the zone has more than one (The Barrens has Copper and Tin), it picks the highest ore your Mining skill can gather.
 - Anywhere else, it points at the nearest GatherMate2 node for that profession.
 - It re-picks when you change zones or switch tracking. Anything you choose by hand, or **Stop**, stays until you switch tracking again.
-- Switch between **Automatic** and **Manual** at the top of the options page, in the right-click menu, or with `/gc auto`.
+- Switch between **Automatic** and **Manual** at the top of the options page, in the arrow's right-click menu, or with `/gc auto`.
 
 ## Install
 
@@ -25,8 +25,8 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 ## Use
 
 - The addon starts **off**. **Left-click** the minimap button (pickaxe) to turn it on or off: the icon is in full color when on, grey when off.
-- **Right-click** the minimap button for the options page. Right-click the arrow for a quick menu.
-- Right-click the arrow for the same menu. Drag the arrow to move it.
+- **Right-click** the minimap button for the options page.
+- Right-click the arrow for a quick menu. Drag the arrow to move it.
 - Slash commands (`/gc` or `/goblin`):
 
 | Command | What it does |
