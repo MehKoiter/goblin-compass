@@ -25,7 +25,7 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 ## Use
 
 - The addon starts **off**. **Left-click** the minimap button (pickaxe) to turn it on or off: the icon is in full color when on, grey when off.
-- **Right-click** the minimap button for the menu (which also has **Options...**).
+- **Right-click** the minimap button for the options page. Right-click the arrow for a quick menu.
 - Right-click the arrow for the same menu. Drag the arrow to move it.
 - Slash commands (`/gc` or `/goblin`):
 

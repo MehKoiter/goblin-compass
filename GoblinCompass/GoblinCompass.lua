@@ -536,6 +536,7 @@ end
 local function SetEnabled(on)
   DB().enabled = on and true or false
   UpdateMMIcon()
+  if GoblinCompassEnabledCheck then GoblinCompassEnabledCheck:SetChecked(DB().enabled) end
   if on then
     state.userStopped = false
     Print("on." .. (DB().autoTrack == false and " Pick a profession or route from the menu (right-click the minimap button)."
@@ -718,7 +719,7 @@ end)
 mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 mm:SetScript("OnClick", function(self, button)
   if button == "RightButton" then
-    ShowMenu()
+    OpenOptions()
   else
     SetEnabled(not IsEnabled())
     if self:IsMouseOver() and self:GetScript("OnEnter") then self:GetScript("OnEnter")(self) end  -- refresh tooltip
@@ -737,7 +738,7 @@ mm:SetScript("OnEnter", function(self)
     GameTooltip:AddLine("Off", 1, 0.3, 0.3)
   end
   GameTooltip:AddLine("Left-click: turn " .. (IsEnabled() and "off" or "on"), 0.7, 0.7, 0.7)
-  GameTooltip:AddLine("Right-click: menu", 0.7, 0.7, 0.7)
+  GameTooltip:AddLine("Right-click: options", 0.7, 0.7, 0.7)
   GameTooltip:AddLine("Drag: move button", 0.7, 0.7, 0.7)
   GameTooltip:Show()
 end)
@@ -754,11 +755,17 @@ ptitle:SetPoint("TOPLEFT", 16, -16)
 ptitle:SetText("Goblin Compass")
 local psub = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 psub:SetPoint("TOPLEFT", ptitle, "BOTTOMLEFT", 0, -6)
-psub:SetText("Right-click the arrow or the minimap button for a quick menu.")
+psub:SetText("Left-click the minimap button to turn Goblin Compass on or off. Right-click the arrow for a quick menu.")
+
+-- On/off
+local enCheck = CreateFrame("CheckButton", "GoblinCompassEnabledCheck", panel, "InterfaceOptionsCheckButtonTemplate")
+enCheck:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", -2, -10)
+_G["GoblinCompassEnabledCheckText"]:SetText("Enabled")
+enCheck:SetScript("OnClick", function(self) SetEnabled(self:GetChecked() and true or false) end)
 
 -- Automatic / Manual choice
 local mlabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-mlabel:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", 0, -18)
+mlabel:SetPoint("TOPLEFT", enCheck, "BOTTOMLEFT", 2, -10)
 mlabel:SetText("What to follow")
 local function MakeRadio(name, label, x, y, hint)
   local r = CreateFrame("CheckButton", name, panel, "UIRadioButtonTemplate")
@@ -787,7 +794,7 @@ manualRadio:SetScript("OnClick", function() SetAutoMode(false); RefreshModeRadio
 
 -- Node-mode profession dropdown
 local dlabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-dlabel:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", 0, -78)
+dlabel:SetPoint("TOPLEFT", mlabel, "BOTTOMLEFT", 0, -60)
 dlabel:SetText("Gather nodes (GatherMate2)")
 local dd = CreateFrame("Frame", "GoblinCompassProfDropdown", panel, "UIDropDownMenuTemplate")
 dd:SetPoint("TOPLEFT", dlabel, "BOTTOMLEFT", -16, -2)
@@ -917,6 +924,7 @@ local function RefreshPanel()
   lock:SetChecked(DB().locked and true or false)
   mmCheck:SetChecked(not DB().hideMinimap)
   RefreshModeRadios()
+  enCheck:SetChecked(IsEnabled())
   scale:SetValue(DB().scale or 1)
   arrive:SetValue(DB().arrive or ARRIVE_YARDS)
   wpr:SetValue(DB().wpRadius or WP_RADIUS)
