@@ -613,51 +613,21 @@ local function AddItem(level, text, fn, opts)
   UIDropDownMenu_AddButton(info, level)
 end
 
+-- the short quick menu (everything else lives on the options page)
 local function InitMenu(self, level)
   level = level or 1
-  local val = UIDROPDOWNMENU_MENU_VALUE
-  if level == 1 then
-    AddItem(level, "Goblin Compass", nil, { isTitle = true })
-    AddItem(level, "Enabled", function() SetEnabled(not IsEnabled()) end,
-      { notCheckable = false, checked = IsEnabled(), isNotRadio = true })
-    AddItem(level, "Automatic (from tracking)", function() SetAutoMode(true) end,
-      { notCheckable = false, checked = DB().autoTrack ~= false })
-    AddItem(level, "Manual", function() SetAutoMode(false) end,
-      { notCheckable = false, checked = DB().autoTrack == false })
-    AddItem(level, "Gather nodes (GatherMate2)", nil, { isTitle = true })
-    for _, prof in ipairs(PROF_ORDER) do
-      AddItem(level, prof, function() SetProf(prof) end,
-        { notCheckable = false, checked = (state.mode == "nodes" and state.prof == prof) })
-    end
-    AddItem(level, "Planned zone routes", nil, { hasArrow = true, value = "ROUTES", keepShownOnClick = true })
-    AddItem(level, "Walk route in reverse", function() SetReverse(not DB().reverse) end,
-      { notCheckable = false, checked = DB().reverse and true or false, isNotRadio = true, keepShownOnClick = true })
-    AddItem(level, "Skip this node / waypoint", Skip)
-    AddItem(level, "Clear visited nodes", function() wipe(state.visited); state.target = nil end)
-    AddItem(level, "Stop guiding", function() Stop() end)
-    AddItem(level, "Options...", function() OpenOptions() end)
-  elseif level == 2 and val == "ROUTES" then
-    local here = RoutesHere()
-    if #here > 0 then
-      AddItem(level, "You are in " .. here[1].zone, nil, { isTitle = true })
-      for _, r in ipairs(here) do
-        AddItem(level, r.ore .. " - " .. RouteLabel(r), function() StartRoute(r) end,
-          { notCheckable = false, checked = (state.mode == "route" and state.route == r) })
-      end
-    end
-    for _, ore in ipairs(RouteResources()) do
-      AddItem(level, ore, nil, { hasArrow = true, value = "ORE:" .. ore, keepShownOnClick = true })
-    end
-  elseif level == 3 and type(val) == "string" and val:sub(1, 4) == "ORE:" then
-    local ore = val:sub(5)
-    for _, r in ipairs(AllRoutes()) do
-      if r.ore == ore then
-        AddItem(level, RouteLabel(r) .. (r.faction and (" |cff999999" .. r.faction .. "|r") or ""),
-          function() StartRoute(r) end,
-          { notCheckable = false, checked = (state.mode == "route" and state.route == r) })
-      end
-    end
-  end
+  if level ~= 1 then return end
+  AddItem(level, "Goblin Compass", nil, { isTitle = true })
+  AddItem(level, "Enabled", function() SetEnabled(not IsEnabled()) end,
+    { notCheckable = false, checked = IsEnabled(), isNotRadio = true })
+  AddItem(level, "Automatic (from tracking)", function() SetAutoMode(true) end,
+    { notCheckable = false, checked = DB().autoTrack ~= false })
+  AddItem(level, "Manual", function() SetAutoMode(false) end,
+    { notCheckable = false, checked = DB().autoTrack == false })
+  AddItem(level, "Walk route in reverse", function() SetReverse(not DB().reverse) end,
+    { notCheckable = false, checked = DB().reverse and true or false, isNotRadio = true })
+  AddItem(level, "Clear visited nodes", function() wipe(state.visited); state.target = nil end)
+  AddItem(level, "Options...", function() OpenOptions() end)
 end
 
 local function ShowMenu()
@@ -719,7 +689,7 @@ end)
 mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 mm:SetScript("OnClick", function(self, button)
   if button == "RightButton" then
-    OpenOptions()
+    ShowMenu()
   else
     SetEnabled(not IsEnabled())
     if self:IsMouseOver() and self:GetScript("OnEnter") then self:GetScript("OnEnter")(self) end  -- refresh tooltip
@@ -738,7 +708,7 @@ mm:SetScript("OnEnter", function(self)
     GameTooltip:AddLine("Off", 1, 0.3, 0.3)
   end
   GameTooltip:AddLine("Left-click: turn " .. (IsEnabled() and "off" or "on"), 0.7, 0.7, 0.7)
-  GameTooltip:AddLine("Right-click: options", 0.7, 0.7, 0.7)
+  GameTooltip:AddLine("Right-click: menu", 0.7, 0.7, 0.7)
   GameTooltip:AddLine("Drag: move button", 0.7, 0.7, 0.7)
   GameTooltip:Show()
 end)
@@ -755,7 +725,7 @@ ptitle:SetPoint("TOPLEFT", 16, -16)
 ptitle:SetText("Goblin Compass")
 local psub = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 psub:SetPoint("TOPLEFT", ptitle, "BOTTOMLEFT", 0, -6)
-psub:SetText("Left-click the minimap button to turn Goblin Compass on or off. Right-click the arrow for a quick menu.")
+psub:SetText("Minimap button: left-click turns Goblin Compass on or off, right-click opens a quick menu.")
 
 -- On/off
 local enCheck = CreateFrame("CheckButton", "GoblinCompassEnabledCheck", panel, "InterfaceOptionsCheckButtonTemplate")
@@ -916,6 +886,16 @@ resetVisited:SetSize(150, 24)
 resetVisited:SetPoint("LEFT", resetPos, "RIGHT", 8, 0)
 resetVisited:SetText("Clear visited nodes")
 resetVisited:SetScript("OnClick", function() wipe(state.visited); state.target = nil end)
+local skipBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+skipBtn:SetSize(150, 24)
+skipBtn:SetPoint("TOPLEFT", resetPos, "BOTTOMLEFT", 0, -8)
+skipBtn:SetText("Skip node / waypoint")
+skipBtn:SetScript("OnClick", function() Skip() end)
+local stopBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+stopBtn:SetSize(150, 24)
+stopBtn:SetPoint("LEFT", skipBtn, "RIGHT", 8, 0)
+stopBtn:SetText("Stop guiding")
+stopBtn:SetScript("OnClick", function() Stop(); RefreshDropdownText() end)
 
 local function RefreshPanel()
   RefreshDropdownText()
