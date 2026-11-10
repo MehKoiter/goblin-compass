@@ -392,6 +392,15 @@ end)
 ---------------------------------------------------------------------------
 -- Control
 ---------------------------------------------------------------------------
+-- On/off switch (left-click the minimap button). Off by default after install.
+local function IsEnabled() return DB().enabled == true end
+local UpdateMMIcon = function() end  -- set once the minimap button exists
+
+-- picking something by hand while switched off switches the addon on
+local function EnsureEnabled()
+  if not IsEnabled() then DB().enabled = true; UpdateMMIcon() end
+end
+
 local function Stop(silent)
   state.mode, state.prof, state.route, state.nodes, state.target, state.wp = nil, nil, nil, nil, nil, nil
   state.auto = false
@@ -401,6 +410,7 @@ end
 
 local function SetProf(prof, auto)
   if not prof then return Stop() end
+  EnsureEnabled()
   TryLoadData()
   state.mode, state.prof, state.route = "nodes", prof, nil
   state.nodes, state.target, state.mapID, state.wp = nil, nil, nil, nil
@@ -411,6 +421,7 @@ end
 
 local function StartRoute(route, auto)
   if not route then return Stop() end
+  EnsureEnabled()
   state.mode, state.route, state.prof = "route", route, nil
   state.nodes, state.target, state.wp = nil, nil, nil
   state.auto, state.userStopped = auto and true or false, false
@@ -495,7 +506,7 @@ end
 
 -- force: tracking just changed, so override whatever was chosen by hand
 local function AutoPick(force)
-  if DB().autoTrack == false then return end
+  if not IsEnabled() or DB().autoTrack == false then return end
   local prof = ActiveTracking()
   if not prof then
     if state.auto and force then Stop(true) end  -- switched tracking off / to something else
@@ -519,6 +530,20 @@ local function SetAutoMode(on)
     AutoPick(true)
   else
     state.auto = false  -- keep the current arrow, but it's yours now
+  end
+end
+
+local function SetEnabled(on)
+  DB().enabled = on and true or false
+  UpdateMMIcon()
+  if on then
+    state.userStopped = false
+    Print("on." .. (DB().autoTrack == false and " Pick a profession or route from the menu (right-click the minimap button)."
+      or " Turn on Find Minerals, Find Herbs or Find Treasure and the arrow follows it."))
+    AutoPick(true)
+  else
+    Stop(true)
+    Print("off. Left-click the minimap button to turn it back on.")
   end
 end
 
@@ -592,6 +617,8 @@ local function InitMenu(self, level)
   local val = UIDROPDOWNMENU_MENU_VALUE
   if level == 1 then
     AddItem(level, "Goblin Compass", nil, { isTitle = true })
+    AddItem(level, "Enabled", function() SetEnabled(not IsEnabled()) end,
+      { notCheckable = false, checked = IsEnabled(), isNotRadio = true })
     AddItem(level, "Automatic (from tracking)", function() SetAutoMode(true) end,
       { notCheckable = false, checked = DB().autoTrack ~= false })
     AddItem(level, "Manual", function() SetAutoMode(false) end,
@@ -660,6 +687,13 @@ local mmBorder = mm:CreateTexture(nil, "OVERLAY")
 mmBorder:SetSize(53, 53); mmBorder:SetPoint("TOPLEFT")
 mmBorder:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
+-- full color when on, grey and dimmed when off
+UpdateMMIcon = function()
+  local on = IsEnabled()
+  mmIcon:SetDesaturated(not on)
+  if on then mmIcon:SetVertexColor(1, 1, 1) else mmIcon:SetVertexColor(0.5, 0.5, 0.5) end
+end
+
 local function UpdateMMPos()
   local a = rad(DB().mmAngle or 200)
   local r = (Minimap:GetWidth() / 2) + 5
@@ -682,18 +716,28 @@ mm:SetScript("OnDragStart", function(self)
   end)
 end)
 mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-mm:SetScript("OnClick", function(_, button)
-  if button == "RightButton" then OpenOptions() else ShowMenu() end
+mm:SetScript("OnClick", function(self, button)
+  if button == "RightButton" then
+    ShowMenu()
+  else
+    SetEnabled(not IsEnabled())
+    if self:IsMouseOver() and self:GetScript("OnEnter") then self:GetScript("OnEnter")(self) end  -- refresh tooltip
+  end
 end)
 mm:SetScript("OnEnter", function(self)
   GameTooltip:SetOwner(self, "ANCHOR_LEFT")
   GameTooltip:AddLine("Goblin Compass")
-  local line = "Not guiding"
-  if state.mode == "nodes" then line = "Hunting: " .. state.prof
-  elseif state.mode == "route" then line = "Route: " .. RouteLabel(state.route) end
-  GameTooltip:AddLine(line, 1, 1, 1)
-  GameTooltip:AddLine("Left-click: menu", 0.7, 0.7, 0.7)
-  GameTooltip:AddLine("Right-click: options", 0.7, 0.7, 0.7)
+  if IsEnabled() then
+    GameTooltip:AddLine("On", 0.3, 1, 0.3)
+    local line = DB().autoTrack == false and "Manual: pick from the menu" or "Waiting for Find Minerals / Herbs / Treasure"
+    if state.mode == "nodes" then line = "Hunting: " .. state.prof
+    elseif state.mode == "route" then line = "Route: " .. state.route.ore .. " - " .. RouteLabel(state.route) end
+    GameTooltip:AddLine(line, 1, 1, 1)
+  else
+    GameTooltip:AddLine("Off", 1, 0.3, 0.3)
+  end
+  GameTooltip:AddLine("Left-click: turn " .. (IsEnabled() and "off" or "on"), 0.7, 0.7, 0.7)
+  GameTooltip:AddLine("Right-click: menu", 0.7, 0.7, 0.7)
   GameTooltip:AddLine("Drag: move button", 0.7, 0.7, 0.7)
   GameTooltip:Show()
 end)
@@ -913,6 +957,7 @@ ev:SetScript("OnEvent", function(_, event, name)
     if p then arrow:ClearAllPoints(); arrow:SetPoint(p[1], UIParent, p[2], p[3], p[4]) end
     arrow:SetScale(db.scale or 1)
     UpdateMMPos()
+    UpdateMMIcon()
     mm:SetShown(not db.hideMinimap)
   elseif event == "ZONE_CHANGED_NEW_AREA" then
     state.nodes, state.target, state.mapID, state.axesMap = nil, nil, nil, nil
@@ -1040,6 +1085,8 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
     ListRoutes()
   elseif cmd == "reverse" then
     SetReverse(not DB().reverse); Print("route direction: " .. (DB().reverse and "reverse" or "normal"))
+  elseif cmd == "on" or cmd == "off" or cmd == "toggle" then
+    SetEnabled(cmd == "on" or (cmd == "toggle" and not IsEnabled()))
   elseif cmd == "stop" then
     Stop()
   elseif cmd == "skip" then
@@ -1057,6 +1104,6 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
   elseif cmd == "debug" then
     Debug()
   else
-    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | auto | record | debug")
+    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | on | off | auto | record | debug")
   end
 end

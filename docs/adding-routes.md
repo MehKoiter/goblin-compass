@@ -6,7 +6,7 @@ Goblin Compass ships with mining routes, but the route system works for any gath
 
 A route is a loop of waypoints in one zone. The arrow points at the next waypoint, moves on when you get within the waypoint radius (50 yd by default, set in the options), and goes back to the start after the last point.
 
-With **Automatic** mode on, tracking picks the profession and the route:
+With the addon switched on (left-click the minimap button) and **Automatic** mode on, tracking picks the profession and the route:
 - **Find Minerals** starts a `Mining` route in your zone.
 - **Find Herbs** starts a `Herbalism` route.
 - **Find Treasure** starts a `Treasure` route.

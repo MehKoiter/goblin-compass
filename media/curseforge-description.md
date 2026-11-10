@@ -35,7 +35,7 @@ Switch on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow s
 - Drag it anywhere, lock it in place and resize it.
 
 ### Easy to control
-- **Minimap button:** left-click for the quick menu, right-click for options.
+- **Minimap button:** left-click to turn Goblin Compass on or off (the icon goes grey when it's off), right-click for the quick menu. It starts off after install, so it never gets in your way until you want it.
 - **Right-click the arrow** for the same quick menu.
 - **Options page** (Esc → Options → AddOns → Goblin Compass): automatic or manual mode, profession and route pickers, node name filter, reverse route direction, arrow size, arrival distance and waypoint radius.
 
@@ -48,6 +48,7 @@ Use `/gc` or `/goblin`.
 | Command | What it does |
 | --- | --- |
 | `/gc` | Open the quick menu |
+| `/gc on` / `off` | Turn the addon on or off |
 | `/gc mining` / `herb` / `fish` / `treasure` | Point at the nearest node of that type |
 | `/gc route` | Start the planned route for the zone you're in |
 | `/gc route tin barrens` | Start a route by name (words in any order) |

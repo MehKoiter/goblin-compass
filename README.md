@@ -24,7 +24,8 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 
 ## Use
 
-- Click the minimap button (pickaxe) for the menu, or right-click it for options.
+- The addon starts **off**. **Left-click** the minimap button (pickaxe) to turn it on or off: the icon is in full color when on, grey when off.
+- **Right-click** the minimap button for the menu (which also has **Options...**).
 - Right-click the arrow for the same menu. Drag the arrow to move it.
 - Slash commands (`/gc` or `/goblin`):
 
@@ -39,6 +40,7 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 | `/gc skip` `stop` `reset` | skip node/waypoint, stop, clear visited nodes |
 | `/gc filter copper` | node mode: only nodes whose name contains this |
 | `/gc record` | record a new route by walking it (see [Adding routes](docs/adding-routes.md)) |
+| `/gc on` `off` | turn the addon on or off (same as left-clicking the minimap button) |
 | `/gc auto` | switch between automatic (from tracking) and manual |
 | `/gc options` | open the options page |
 | `/gc debug` | print map ID and GatherMate2 data info (useful for bug reports) |
