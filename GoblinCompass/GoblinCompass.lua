@@ -626,6 +626,7 @@ local function InitMenu(self, level)
     { notCheckable = false, checked = DB().autoTrack == false })
   AddItem(level, "Walk route in reverse", function() SetReverse(not DB().reverse) end,
     { notCheckable = false, checked = DB().reverse and true or false, isNotRadio = true })
+  AddItem(level, "Skip this node / waypoint", Skip)
   AddItem(level, "Clear visited nodes", function() wipe(state.visited); state.target = nil end)
   AddItem(level, "Options...", function() OpenOptions() end)
 end

@@ -25,8 +25,8 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 ## Use
 
 - The addon starts **off**. **Left-click** the minimap button (pickaxe) to turn it on or off: the icon is in full color when on, grey when off.
-- **Right-click** the minimap button (or the arrow) for a quick menu: Enabled, Automatic / Manual, walk route in reverse, clear visited nodes, and **Options...**.
-- Everything else (picking a profession or route, skipping a node, stopping) is on the options page. Drag the arrow to move it.
+- **Right-click** the minimap button (or the arrow) for a quick menu: Enabled, Automatic / Manual, walk route in reverse, skip this node / waypoint, clear visited nodes, and **Options...**.
+- Everything else (picking a profession or route, stopping) is on the options page. Drag the arrow to move it.
 - Slash commands (`/gc` or `/goblin`):
 
 | Command | What it does |
