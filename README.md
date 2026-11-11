@@ -18,8 +18,9 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 
 ## Install
 
-1. Download this repo (green **Code** button, **Download ZIP**) or a release zip.
-2. Copy the `GoblinCompass` folder into `World of Warcraft\_classic_era_\Interface\AddOns\`.
+1. Install from CurseForge (CurseForge app, WowUp, etc.), or download the zip from the latest [GitHub release](https://github.com/MehKoiter/goblin-compass/releases).
+2. Manual install: extract the release zip into your game's `Interface\AddOns\` folder, so you end up with `Interface\AddOns\GoblinCompass\GoblinCompass.toc`.
+   - The green **Code > Download ZIP** button gives the development version instead. Its files are one folder deeper (move the inner `GoblinCompass` folder into `AddOns`), and its version shows as `@project-version@`.
 3. Start the game. If it shows as out of date, tick **Load out of date AddOns** on the character screen.
 
 ## Use

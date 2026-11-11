@@ -13,7 +13,7 @@ With the addon switched on (left-click the minimap button) and **Automatic** mod
 
 If a zone has several routes for that profession, the addon picks the highest one the player's skill allows (see `skill` below). Zones without a route fall back to GatherMate2 node mode.
 
-There's no fish-tracking ability in Classic, so `Fishing` routes are only started by hand, from the menu or with `/gc route`.
+There's no fish-tracking ability in Classic, so `Fishing` routes are only started by hand, from the route list on the options page or with `/gc route`.
 
 ## 1. Record the route in game
 
@@ -28,7 +28,7 @@ The easiest way to get accurate coordinates is to walk the loop yourself.
 5. Type `/gc record stop` to save. Use `/gc record cancel` to throw a recording away.
 6. Log out or `/reload`, which writes the recording to disk. Then open:
    ```
-   World of Warcraft\_classic_era_\WTF\Account\<ACCOUNT>\SavedVariables\GoblinCompass.lua
+   <your game folder>\WTF\Account\<ACCOUNT>\SavedVariables\GoblinCompass.lua
    ```
    Under `["recorded"]` you'll find a ready-made entry, e.g.:
    ```lua
@@ -55,11 +55,11 @@ Paste the entry into the `GoblinCompassRoutes = { ... }` list in `GoblinCompass/
 | `zone` | yes | Zone name as the game shows it, e.g. `"The Barrens"`. |
 | `map` | yes | The zone's uiMapID. The recorder fills it in; otherwise `/gc debug` prints it as `current uiMapID`. |
 | `prof` | no | `"Mining"` (default), `"Herbalism"`, `"Fishing"` or `"Treasure"`. Sets the arrow color and which tracking starts it. |
-| `ore` | yes | What the route gathers: an ore, herb, fish or treasure, e.g. `"Peacebloom"`. It's called `ore` for historical reasons but works for anything. Shown on the arrow and used to group the menus. |
+| `ore` | yes | What the route gathers: an ore, herb, fish or treasure, e.g. `"Peacebloom"`. It's called `ore` for historical reasons but works for anything. Shown on the arrow and used to group the route list. |
 | `skill` | no | Skill needed for this route. Used to pick the best route when a zone has several. Ores default to their mining requirement (Copper 1, Tin 65, Iron 125, Mithril 175, Thorium 230); everything else defaults to 1. |
-| `levels` | yes | Suggested character level range, e.g. `"10-25"`. Shown in menus. |
+| `levels` | yes | Suggested character level range, e.g. `"10-25"`. Shown in the route list. |
 | `note` | no | Short label to tell routes in the same zone apart, e.g. `"northern loop"`. |
-| `faction` | no | `"Alliance"` or `"Horde"` if the route sits mostly in one faction's territory. Shown as a hint in the menu. |
+| `faction` | no | `"Alliance"` or `"Horde"` if the route sits mostly in one faction's territory. Shown as a hint in the route list. |
 | `pts` | yes | The waypoints, as `x,y` pairs in walking order. At least 3 points. |
 
 Example herb route:
@@ -70,7 +70,7 @@ Example herb route:
   pts={ 52.1,30.4, 55.0,27.8, 57.9,31.2, 56.3,36.0, 52.4,35.1 } },
 ```
 
-Routes appear in the menus grouped by `ore`. The known ores come first, then everything else in the order it appears in the file, so keep routes for the same herb or fish together.
+Routes appear in the route list (options page) grouped by `ore`. The known ores come first, then everything else in the order it appears in the file, so keep routes for the same herb or fish together.
 
 ## 3. Check it in game
 

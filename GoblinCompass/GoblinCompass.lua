@@ -539,7 +539,7 @@ local function SetEnabled(on)
   if GoblinCompassEnabledCheck then GoblinCompassEnabledCheck:SetChecked(DB().enabled) end
   if on then
     state.userStopped = false
-    Print("on." .. (DB().autoTrack == false and " Pick a profession or route from the menu (right-click the minimap button)."
+    Print("on." .. (DB().autoTrack == false and " Pick a profession or route on the options page (right-click the minimap button, then Options)."
       or " Turn on Find Minerals, Find Herbs or Find Treasure and the arrow follows it."))
     AutoPick(true)
   else
@@ -701,7 +701,7 @@ mm:SetScript("OnEnter", function(self)
   GameTooltip:AddLine("Goblin Compass")
   if IsEnabled() then
     GameTooltip:AddLine("On", 0.3, 1, 0.3)
-    local line = DB().autoTrack == false and "Manual: pick from the menu" or "Waiting for Find Minerals / Herbs / Treasure"
+    local line = DB().autoTrack == false and "Manual: pick on the options page" or "Waiting for Find Minerals / Herbs / Treasure"
     if state.mode == "nodes" then line = "Hunting: " .. state.prof
     elseif state.mode == "route" then line = "Route: " .. state.route.ore .. " - " .. RouteLabel(state.route) end
     GameTooltip:AddLine(line, 1, 1, 1)
@@ -755,7 +755,7 @@ end
 local autoRadio = MakeRadio("GoblinCompassAutoRadio", "Automatic (from tracking)", 0, -6,
   "Find Minerals, Find Herbs or Find Treasure picks the profession, and the zone you're in picks the route.")
 local manualRadio = MakeRadio("GoblinCompassManualRadio", "Manual", 0, -28,
-  "Nothing starts by itself. Pick a profession or route below, or from the menu.")
+  "Nothing starts by itself. Pick a profession or route below, or with /gc mining or /gc route.")
 local function RefreshModeRadios()
   local on = DB().autoTrack ~= false
   autoRadio:SetChecked(on); manualRadio:SetChecked(not on)
@@ -813,7 +813,7 @@ UIDropDownMenu_Initialize(rd, function(self, level)
     for _, r in ipairs(AllRoutes()) do
       if r.ore == ore then
         local i = UIDropDownMenu_CreateInfo()
-        i.text = RouteLabel(r)
+        i.text = RouteLabel(r) .. (r.faction and (" |cff999999" .. r.faction .. "|r") or "")
         i.checked = (state.mode == "route" and state.route == r)
         i.func = function() StartRoute(r); RefreshDropdownText() end
         UIDropDownMenu_AddButton(i, level)

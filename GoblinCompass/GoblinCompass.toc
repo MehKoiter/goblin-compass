@@ -2,9 +2,12 @@
 ## Title: Goblin Compass
 ## Notes: A goblin's nose for ore, herbs and fish: an arrow to the nearest GatherMate2 node, or around a planned zone farming route.
 ## Author: Jess
+## IconTexture: Interface\Icons\Trade_Mining
 ## Version: @project-version@
 ## OptionalDeps: GatherMate2, GatherMate2_Data
 ## SavedVariables: GoblinCompassDB
+## X-License: MIT
+## X-Website: https://github.com/MehKoiter/goblin-compass
 
 Routes.lua
 GoblinCompass.lua
