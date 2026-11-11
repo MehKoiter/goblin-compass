@@ -77,9 +77,9 @@ git push origin v0.9
 
 - The tag becomes the version shown in game (`## Version: @project-version@` in the TOC).
 - A GitHub release with the zip is always created.
-- Uploading to CurseForge needs two settings under **Settings > Secrets and variables > Actions**:
+- Uploading to CurseForge needs one secret under **Settings > Secrets and variables > Actions**:
   - secret `CF_API_KEY`: a CurseForge API token (CurseForge > account settings > API tokens)
-  - variable `CURSEFORGE_PROJECT_ID`: the project ID from the CurseForge project page's "About Project" box
+  - the CurseForge project ID is already in the TOC (`## X-Curse-Project-ID`), so no variable is needed
 
 ## Credits
 
