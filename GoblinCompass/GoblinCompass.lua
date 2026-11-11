@@ -12,11 +12,22 @@ local WP_RADIUS    = 50     -- route mode: waypoint counts as reached inside thi
 local PROF_ORDER = { "Mining", "Herbalism", "Fishing", "Treasure" }
 local PROF_TYPE  = { Mining = "Mining", Herbalism = "Herb Gathering", Fishing = "Fishing", Treasure = "Treasure" }
 local ORE_ORDER  = { "Copper", "Tin", "Iron", "Mithril", "Thorium" }
+local ORE_SKILL  = { Copper = 1, Tin = 65, Iron = 125, Mithril = 175, Thorium = 230 }  -- Mining skill needed
+local REC_STEP   = 40     -- /gc record: drop a waypoint every this many yards walked
+-- tracking abilities -> profession (Find Minerals, Find Herbs, Find Treasure)
+local TRACK_SPELLS = { [2580] = "Mining", [2383] = "Herbalism", [2481] = "Treasure" }
 local ALIASES = {
   mining = "Mining", mine = "Mining", ore = "Mining",
   herb = "Herbalism", herbs = "Herbalism", herbalism = "Herbalism",
   fish = "Fishing", fishing = "Fishing",
   treasure = "Treasure", chest = "Treasure",
+}
+-- arrow tint for each profession (r, g, b)
+local PROF_COLOR = {
+  Mining    = { 1.00, 0.50, 0.10 },
+  Herbalism = { 0.35, 0.90, 0.30 },
+  Fishing   = { 0.30, 0.60, 1.00 },
+  Treasure  = { 1.00, 0.82, 0.15 },
 }
 -- GatherMate2 saved-variable tables (your own scanned nodes) + shipped data module tables
 local SOURCES = {
@@ -30,6 +41,9 @@ local state = {
   mode = nil,               -- nil | "nodes" | "route"
   prof = nil, mapID = nil, nodes = nil, target = nil, visited = {},
   route = nil, wp = nil, lastRepick = 0,
+  auto = false,             -- current guidance was picked automatically from tracking
+  userStopped = false,      -- user pressed stop: don't auto-start again until tracking changes
+  lastTrack = nil,          -- profession of the last seen tracking ability
   E = nil, S = nil, axesMap = nil,
 }
 
@@ -173,6 +187,20 @@ local function RoutesHere()
   return out
 end
 
+local function RouteProf(r) return r.prof or "Mining" end
+local function RouteSkill(r) return r.skill or ORE_SKILL[r.ore] or 1 end
+
+-- what the routes gather (r.ore: an ore, herb, fish...), known ores first, then in file order
+local function RouteResources()
+  local out, seen = {}, {}
+  local function add(name) if name and not seen[name] then seen[name] = true; out[#out + 1] = name end end
+  for _, ore in ipairs(ORE_ORDER) do
+    for _, r in ipairs(AllRoutes()) do if r.ore == ore then add(ore); break end end
+  end
+  for _, r in ipairs(AllRoutes()) do add(r.ore) end
+  return out
+end
+
 -- every word in the query must appear somewhere in the route's id/zone/ore/note
 local function FindRoutes(q)
   q = (q or ""):lower():gsub("[%-']", " ")
@@ -180,7 +208,7 @@ local function FindRoutes(q)
   for w in q:gmatch("%S+") do words[#words + 1] = w end
   local out = {}
   for _, r in ipairs(AllRoutes()) do
-    local hay = (r.id .. " " .. r.zone .. " " .. r.ore .. " " .. (r.note or "")):lower():gsub("[%-']", " ")
+    local hay = (r.id .. " " .. r.zone .. " " .. r.ore .. " " .. RouteProf(r) .. " " .. (r.note or "")):lower():gsub("[%-']", " ")
     local ok = true
     for _, w in ipairs(words) do
       if not hay:find(w, 1, true) then ok = false; break end
@@ -221,8 +249,14 @@ arrow:SetClampedToScreen(true)
 arrow:Hide()
 
 arrow.tex = arrow:CreateTexture(nil, "ARTWORK")
-arrow.tex:SetAllPoints()
-arrow.tex:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
+arrow.tex:SetSize(56, 56)
+arrow.tex:SetPoint("CENTER")
+arrow.tex:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\arrow")
+
+local function SetColor(prof)
+  local c = PROF_COLOR[prof] or PROF_COLOR.Mining
+  arrow.tex:SetVertexColor(c[1], c[2], c[3])
+end
 
 arrow.label = arrow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 arrow.label:SetPoint("TOP", arrow, "BOTTOM", 0, -2)
@@ -285,10 +319,10 @@ local function UpdateNodes(mapID, x, y, px, py)
     MarkVisited(t); state.target = nil
     return
   end
-  arrow.tex:SetVertexColor(1, 1, 1)
+  SetColor(state.prof)
   Aim(px, py, t.wx, t.wy)
   arrow.label:SetText(NodeName(state.prof, t.id))
-  arrow.label2:SetText(string.format("%.0f yd   (%.1f, %.1f)", dist, t.x * 100, t.y * 100))
+  arrow.label2:SetText(string.format("%.0f yd", dist))
 end
 
 local function UpdateRoute(mapID, x, y, px, py)
@@ -332,10 +366,10 @@ local function UpdateRoute(mapID, x, y, px, py)
   end
 
   local wp = w[state.wp]
-  arrow.tex:SetVertexColor(0.55, 1, 0.55)
+  SetColor(RouteProf(route))
   local dist = Aim(px, py, wp[1], wp[2])
-  arrow.label:SetText(route.zone .. " - " .. route.ore .. (route.note and (" (" .. route.note .. ")") or ""))
-  arrow.label2:SetText(string.format("%.0f yd   waypoint %d/%d   (%.1f, %.1f)", dist, state.wp, n, wp[3], wp[4]))
+  arrow.label:SetText(route.zone .. " - " .. route.ore)
+  arrow.label2:SetText(string.format("%.0f yd", dist))
 end
 
 local function Update()
@@ -358,27 +392,167 @@ end)
 ---------------------------------------------------------------------------
 -- Control
 ---------------------------------------------------------------------------
-local function Stop(silent)
-  state.mode, state.prof, state.route, state.nodes, state.target, state.wp = nil, nil, nil, nil, nil, nil
-  arrow:Hide()
-  if not silent then Print("stopped.") end
+-- On/off switch (left-click the minimap button). Off by default after install.
+local function IsEnabled() return DB().enabled == true end
+local UpdateMMIcon = function() end  -- set once the minimap button exists
+
+-- picking something by hand while switched off switches the addon on
+local function EnsureEnabled()
+  if not IsEnabled() then DB().enabled = true; UpdateMMIcon() end
 end
 
-local function SetProf(prof)
+local function Stop(silent)
+  state.mode, state.prof, state.route, state.nodes, state.target, state.wp = nil, nil, nil, nil, nil, nil
+  state.auto = false
+  arrow:Hide()
+  if not silent then state.userStopped = true; Print("stopped.") end
+end
+
+local function SetProf(prof, auto)
   if not prof then return Stop() end
+  EnsureEnabled()
   TryLoadData()
   state.mode, state.prof, state.route = "nodes", prof, nil
   state.nodes, state.target, state.mapID, state.wp = nil, nil, nil, nil
+  state.auto, state.userStopped = auto and true or false, false
   arrow:Show()
-  Print("guiding to the nearest " .. prof .. " node. Drag the arrow to move it.")
+  Print((auto and "(auto) " or "") .. "guiding to the nearest " .. prof .. " node. Drag the arrow to move it.")
 end
 
-local function StartRoute(route)
+local function StartRoute(route, auto)
   if not route then return Stop() end
+  EnsureEnabled()
   state.mode, state.route, state.prof = "route", route, nil
   state.nodes, state.target, state.wp = nil, nil, nil
+  state.auto, state.userStopped = auto and true or false, false
   arrow:Show()
-  Print("route: " .. RouteLabel(route) .. (DB().reverse and " (reverse)" or "") .. ". Follow the arrow around the loop.")
+  Print((auto and "(auto) " or "") .. "route: " .. route.ore .. " - " .. RouteLabel(route) .. (DB().reverse and " (reverse)" or "") .. ". Follow the arrow around the loop.")
+end
+
+---------------------------------------------------------------------------
+-- Auto-pick from the active tracking ability (Find Minerals / Find Herbs / Find Treasure)
+---------------------------------------------------------------------------
+local function TrackSpellName(id)
+  local name = GetSpellInfo and GetSpellInfo(id)
+  if not name and C_Spell and C_Spell.GetSpellName then name = C_Spell.GetSpellName(id) end
+  return name
+end
+
+local function TrackSpellIcon(id)
+  if GetSpellTexture then return GetSpellTexture(id) end
+  if C_Spell and C_Spell.GetSpellTexture then return C_Spell.GetSpellTexture(id) end
+end
+
+-- which gathering profession the player is tracking right now (or nil)
+local function ActiveTracking()
+  -- 1) minimap tracking list
+  if C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo then
+    for i = 1, C_Minimap.GetNumTrackingTypes() or 0 do
+      local a, _, c, _, _, f = C_Minimap.GetTrackingInfo(i)
+      local name, active, spellID
+      if type(a) == "table" then name, active, spellID = a.name, a.active, a.spellID
+      else name, active, spellID = a, c, f end
+      if active then
+        if spellID and TRACK_SPELLS[spellID] then return TRACK_SPELLS[spellID] end
+        for id, prof in pairs(TRACK_SPELLS) do
+          if name and name == TrackSpellName(id) then return prof end
+        end
+      end
+    end
+  end
+  -- 2) the single active tracking icon shown on the minimap
+  local tex = GetTrackingTexture and GetTrackingTexture()
+  if tex then
+    for id, prof in pairs(TRACK_SPELLS) do
+      local icon = TrackSpellIcon(id)
+      if icon and (icon == tex or tostring(icon):lower() == tostring(tex):lower()) then return prof end
+    end
+  end
+  -- 3) tracking shown as a buff
+  if UnitBuff then
+    for i = 1, 40 do
+      local name, _, _, _, _, _, _, _, _, spellID = UnitBuff("player", i)
+      if not name then break end
+      if spellID and TRACK_SPELLS[spellID] then return TRACK_SPELLS[spellID] end
+    end
+  end
+end
+
+-- the player's skill in a gathering profession (nil if unknown)
+local function ProfSkill(prof)
+  if not (GetNumSkillLines and GetSkillLineInfo) then return end
+  local want = prof
+  if prof == "Mining" then want = TrackSpellName(2575) or "Mining" end  -- spell 2575 is "Mining" in the client's language
+  for i = 1, GetNumSkillLines() do
+    local name, isHeader, _, rank = GetSkillLineInfo(i)
+    if not isHeader and (name == want or name == prof) then return rank end
+  end
+end
+local function MiningSkill() return ProfSkill("Mining") end
+
+-- the best planned route for this zone and profession: the highest one your skill allows
+local function BestRouteHere(prof)
+  local skill = ProfSkill(prof)
+  local best, first
+  for _, r in ipairs(RoutesHere()) do
+    if RouteProf(r) == prof then
+      first = first or r
+      local need = RouteSkill(r)
+      if (not skill or skill >= need) and (not best or need > RouteSkill(best)) then best = r end
+    end
+  end
+  return best or first
+end
+
+-- force: tracking just changed, so override whatever was chosen by hand
+local function AutoPick(force)
+  if not IsEnabled() or DB().autoTrack == false then return end
+  local prof = ActiveTracking()
+  if not prof then
+    if state.auto and force then Stop(true) end  -- switched tracking off / to something else
+    return
+  end
+  if not force and ((state.mode and not state.auto) or state.userStopped) then return end
+  local r = BestRouteHere(prof)
+  if r then
+    if not (state.mode == "route" and state.route == r) then StartRoute(r, true) end
+    state.auto = true
+    return
+  end
+  if not (state.mode == "nodes" and state.prof == prof) then SetProf(prof, true) end
+  state.auto = true
+end
+
+-- Automatic: follow the tracking ability. Manual: only what you pick yourself.
+local function SetAutoMode(on)
+  DB().autoTrack = on and true or false
+  if on then
+    AutoPick(true)
+  else
+    state.auto = false  -- keep the current arrow, but it's yours now
+  end
+end
+
+local function SetEnabled(on)
+  DB().enabled = on and true or false
+  UpdateMMIcon()
+  if GoblinCompassEnabledCheck then GoblinCompassEnabledCheck:SetChecked(DB().enabled) end
+  if on then
+    state.userStopped = false
+    Print("on." .. (DB().autoTrack == false and " Pick a profession or route on the options page (right-click the minimap button, then Options)."
+      or " Turn on Find Minerals, Find Herbs or Find Treasure and the arrow follows it."))
+    AutoPick(true)
+  else
+    Stop(true)
+    Print("off. Left-click the minimap button to turn it back on.")
+  end
+end
+
+local function OnTrackingMaybeChanged()
+  local prof = ActiveTracking()
+  if prof == state.lastTrack then return end
+  state.lastTrack, state.userStopped = prof, false
+  AutoPick(true)
 end
 
 local function Skip()
@@ -403,6 +577,8 @@ local function Debug()
   local info = mapID and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
   Print("current uiMapID: " .. tostring(mapID) .. (info and (" (" .. tostring(info.name) .. ")") or ""))
   Print("planned routes loaded: " .. #AllRoutes() .. ", routes for this zone: " .. #RoutesHere())
+  Print("tracking: " .. tostring(ActiveTracking()) .. ", mining skill: " .. tostring(MiningSkill())
+    .. ", choosing: " .. (DB().autoTrack == false and "manual" or "automatic"))
   for _, prof in ipairs(PROF_ORDER) do
     for _, g in ipairs(SOURCES[prof]) do
       local db = _G[g]
@@ -437,45 +613,22 @@ local function AddItem(level, text, fn, opts)
   UIDropDownMenu_AddButton(info, level)
 end
 
+-- the short quick menu (everything else lives on the options page)
 local function InitMenu(self, level)
   level = level or 1
-  local val = UIDROPDOWNMENU_MENU_VALUE
-  if level == 1 then
-    AddItem(level, "Goblin Compass", nil, { isTitle = true })
-    AddItem(level, "Gather nodes (GatherMate2)", nil, { isTitle = true })
-    for _, prof in ipairs(PROF_ORDER) do
-      AddItem(level, prof, function() SetProf(prof) end,
-        { notCheckable = false, checked = (state.mode == "nodes" and state.prof == prof) })
-    end
-    AddItem(level, "Planned zone routes", nil, { hasArrow = true, value = "ROUTES", keepShownOnClick = true })
-    AddItem(level, "Walk route in reverse", function() SetReverse(not DB().reverse) end,
-      { notCheckable = false, checked = DB().reverse and true or false, isNotRadio = true, keepShownOnClick = true })
-    AddItem(level, "Skip this node / waypoint", Skip)
-    AddItem(level, "Clear visited nodes", function() wipe(state.visited); state.target = nil end)
-    AddItem(level, "Stop guiding", function() Stop() end)
-    AddItem(level, "Options...", function() OpenOptions() end)
-  elseif level == 2 and val == "ROUTES" then
-    local here = RoutesHere()
-    if #here > 0 then
-      AddItem(level, "You are in " .. here[1].zone, nil, { isTitle = true })
-      for _, r in ipairs(here) do
-        AddItem(level, r.ore .. " - " .. RouteLabel(r), function() StartRoute(r) end,
-          { notCheckable = false, checked = (state.mode == "route" and state.route == r) })
-      end
-    end
-    for _, ore in ipairs(ORE_ORDER) do
-      AddItem(level, ore, nil, { hasArrow = true, value = "ORE:" .. ore, keepShownOnClick = true })
-    end
-  elseif level == 3 and type(val) == "string" and val:sub(1, 4) == "ORE:" then
-    local ore = val:sub(5)
-    for _, r in ipairs(AllRoutes()) do
-      if r.ore == ore then
-        AddItem(level, RouteLabel(r) .. (r.faction and (" |cff999999" .. r.faction .. "|r") or ""),
-          function() StartRoute(r) end,
-          { notCheckable = false, checked = (state.mode == "route" and state.route == r) })
-      end
-    end
-  end
+  if level ~= 1 then return end
+  AddItem(level, "Goblin Compass", nil, { isTitle = true })
+  AddItem(level, "Enabled", function() SetEnabled(not IsEnabled()) end,
+    { notCheckable = false, checked = IsEnabled(), isNotRadio = true })
+  AddItem(level, "Automatic (from tracking)", function() SetAutoMode(true) end,
+    { notCheckable = false, checked = DB().autoTrack ~= false })
+  AddItem(level, "Manual", function() SetAutoMode(false) end,
+    { notCheckable = false, checked = DB().autoTrack == false })
+  AddItem(level, "Walk route in reverse", function() SetReverse(not DB().reverse) end,
+    { notCheckable = false, checked = DB().reverse and true or false, isNotRadio = true })
+  AddItem(level, "Skip this node / waypoint", Skip)
+  AddItem(level, "Clear visited nodes", function() wipe(state.visited); state.target = nil end)
+  AddItem(level, "Options...", function() OpenOptions() end)
 end
 
 local function ShowMenu()
@@ -506,6 +659,13 @@ local mmBorder = mm:CreateTexture(nil, "OVERLAY")
 mmBorder:SetSize(53, 53); mmBorder:SetPoint("TOPLEFT")
 mmBorder:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
+-- full color when on, grey and dimmed when off
+UpdateMMIcon = function()
+  local on = IsEnabled()
+  mmIcon:SetDesaturated(not on)
+  if on then mmIcon:SetVertexColor(1, 1, 1) else mmIcon:SetVertexColor(0.5, 0.5, 0.5) end
+end
+
 local function UpdateMMPos()
   local a = rad(DB().mmAngle or 200)
   local r = (Minimap:GetWidth() / 2) + 5
@@ -528,18 +688,28 @@ mm:SetScript("OnDragStart", function(self)
   end)
 end)
 mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-mm:SetScript("OnClick", function(_, button)
-  if button == "RightButton" then OpenOptions() else ShowMenu() end
+mm:SetScript("OnClick", function(self, button)
+  if button == "RightButton" then
+    ShowMenu()
+  else
+    SetEnabled(not IsEnabled())
+    if self:IsMouseOver() and self:GetScript("OnEnter") then self:GetScript("OnEnter")(self) end  -- refresh tooltip
+  end
 end)
 mm:SetScript("OnEnter", function(self)
   GameTooltip:SetOwner(self, "ANCHOR_LEFT")
   GameTooltip:AddLine("Goblin Compass")
-  local line = "Not guiding"
-  if state.mode == "nodes" then line = "Hunting: " .. state.prof
-  elseif state.mode == "route" then line = "Route: " .. RouteLabel(state.route) end
-  GameTooltip:AddLine(line, 1, 1, 1)
-  GameTooltip:AddLine("Left-click: menu", 0.7, 0.7, 0.7)
-  GameTooltip:AddLine("Right-click: options", 0.7, 0.7, 0.7)
+  if IsEnabled() then
+    GameTooltip:AddLine("On", 0.3, 1, 0.3)
+    local line = DB().autoTrack == false and "Manual: pick on the options page" or "Waiting for Find Minerals / Herbs / Treasure"
+    if state.mode == "nodes" then line = "Hunting: " .. state.prof
+    elseif state.mode == "route" then line = "Route: " .. state.route.ore .. " - " .. RouteLabel(state.route) end
+    GameTooltip:AddLine(line, 1, 1, 1)
+  else
+    GameTooltip:AddLine("Off", 1, 0.3, 0.3)
+  end
+  GameTooltip:AddLine("Left-click: turn " .. (IsEnabled() and "off" or "on"), 0.7, 0.7, 0.7)
+  GameTooltip:AddLine("Right-click: menu", 0.7, 0.7, 0.7)
   GameTooltip:AddLine("Drag: move button", 0.7, 0.7, 0.7)
   GameTooltip:Show()
 end)
@@ -556,11 +726,46 @@ ptitle:SetPoint("TOPLEFT", 16, -16)
 ptitle:SetText("Goblin Compass")
 local psub = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 psub:SetPoint("TOPLEFT", ptitle, "BOTTOMLEFT", 0, -6)
-psub:SetText("Right-click the arrow or the minimap button for a quick menu.")
+psub:SetText("Minimap button: left-click turns Goblin Compass on or off, right-click opens a quick menu.")
+
+-- On/off
+local enCheck = CreateFrame("CheckButton", "GoblinCompassEnabledCheck", panel, "InterfaceOptionsCheckButtonTemplate")
+enCheck:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", -2, -10)
+_G["GoblinCompassEnabledCheckText"]:SetText("Enabled")
+enCheck:SetScript("OnClick", function(self) SetEnabled(self:GetChecked() and true or false) end)
+
+-- Automatic / Manual choice
+local mlabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+mlabel:SetPoint("TOPLEFT", enCheck, "BOTTOMLEFT", 2, -10)
+mlabel:SetText("What to follow")
+local function MakeRadio(name, label, x, y, hint)
+  local r = CreateFrame("CheckButton", name, panel, "UIRadioButtonTemplate")
+  r:SetPoint("TOPLEFT", mlabel, "BOTTOMLEFT", x, y)
+  local t = _G[name .. "Text"] or r:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  t:ClearAllPoints(); t:SetPoint("LEFT", r, "RIGHT", 4, 0)
+  t:SetText(label)
+  r.tip = hint
+  r:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(label)
+    GameTooltip:AddLine(self.tip, 1, 1, 1, true); GameTooltip:Show()
+  end)
+  r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  return r
+end
+local autoRadio = MakeRadio("GoblinCompassAutoRadio", "Automatic (from tracking)", 0, -6,
+  "Find Minerals, Find Herbs or Find Treasure picks the profession, and the zone you're in picks the route.")
+local manualRadio = MakeRadio("GoblinCompassManualRadio", "Manual", 0, -28,
+  "Nothing starts by itself. Pick a profession or route below, or with /gc mining or /gc route.")
+local function RefreshModeRadios()
+  local on = DB().autoTrack ~= false
+  autoRadio:SetChecked(on); manualRadio:SetChecked(not on)
+end
+autoRadio:SetScript("OnClick", function() SetAutoMode(true); RefreshModeRadios() end)
+manualRadio:SetScript("OnClick", function() SetAutoMode(false); RefreshModeRadios() end)
 
 -- Node-mode profession dropdown
 local dlabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-dlabel:SetPoint("TOPLEFT", psub, "BOTTOMLEFT", 0, -18)
+dlabel:SetPoint("TOPLEFT", mlabel, "BOTTOMLEFT", 0, -60)
 dlabel:SetText("Gather nodes (GatherMate2)")
 local dd = CreateFrame("Frame", "GoblinCompassProfDropdown", panel, "UIDropDownMenuTemplate")
 dd:SetPoint("TOPLEFT", dlabel, "BOTTOMLEFT", -16, -2)
@@ -601,14 +806,14 @@ UIDropDownMenu_Initialize(rd, function(self, level)
   info.text, info.checked = "Off", (state.mode ~= "route")
   info.func = function() if state.mode == "route" then Stop() end; RefreshDropdownText() end
   UIDropDownMenu_AddButton(info, level)
-  for _, ore in ipairs(ORE_ORDER) do
+  for _, ore in ipairs(RouteResources()) do
     local h = UIDropDownMenu_CreateInfo()
     h.text, h.isTitle, h.notCheckable = ore, true, true
     UIDropDownMenu_AddButton(h, level)
     for _, r in ipairs(AllRoutes()) do
       if r.ore == ore then
         local i = UIDropDownMenu_CreateInfo()
-        i.text = RouteLabel(r)
+        i.text = RouteLabel(r) .. (r.faction and (" |cff999999" .. r.faction .. "|r") or "")
         i.checked = (state.mode == "route" and state.route == r)
         i.func = function() StartRoute(r); RefreshDropdownText() end
         UIDropDownMenu_AddButton(i, level)
@@ -682,6 +887,16 @@ resetVisited:SetSize(150, 24)
 resetVisited:SetPoint("LEFT", resetPos, "RIGHT", 8, 0)
 resetVisited:SetText("Clear visited nodes")
 resetVisited:SetScript("OnClick", function() wipe(state.visited); state.target = nil end)
+local skipBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+skipBtn:SetSize(150, 24)
+skipBtn:SetPoint("TOPLEFT", resetPos, "BOTTOMLEFT", 0, -8)
+skipBtn:SetText("Skip node / waypoint")
+skipBtn:SetScript("OnClick", function() Skip() end)
+local stopBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+stopBtn:SetSize(150, 24)
+stopBtn:SetPoint("LEFT", skipBtn, "RIGHT", 8, 0)
+stopBtn:SetText("Stop guiding")
+stopBtn:SetScript("OnClick", function() Stop(); RefreshDropdownText() end)
 
 local function RefreshPanel()
   RefreshDropdownText()
@@ -689,6 +904,8 @@ local function RefreshPanel()
   rev:SetChecked(DB().reverse and true or false)
   lock:SetChecked(DB().locked and true or false)
   mmCheck:SetChecked(not DB().hideMinimap)
+  RefreshModeRadios()
+  enCheck:SetChecked(IsEnabled())
   scale:SetValue(DB().scale or 1)
   arrive:SetValue(DB().arrive or ARRIVE_YARDS)
   wpr:SetValue(DB().wpRadius or WP_RADIUS)
@@ -719,6 +936,9 @@ end
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+ev:RegisterEvent("MINIMAP_UPDATE_TRACKING")
+ev:RegisterUnitEvent("UNIT_AURA", "player")
 ev:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON_NAME then
     local db = DB()
@@ -726,16 +946,96 @@ ev:SetScript("OnEvent", function(_, event, name)
     if p then arrow:ClearAllPoints(); arrow:SetPoint(p[1], UIParent, p[2], p[3], p[4]) end
     arrow:SetScale(db.scale or 1)
     UpdateMMPos()
+    UpdateMMIcon()
     mm:SetShown(not db.hideMinimap)
   elseif event == "ZONE_CHANGED_NEW_AREA" then
     state.nodes, state.target, state.mapID, state.axesMap = nil, nil, nil, nil
     if state.mode == "route" then state.wp = nil end
+    AutoPick(false)
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    -- give the map and tracking info a moment to settle after loading
+    C_Timer.After(2, function()
+      state.lastTrack = ActiveTracking()
+      AutoPick(false)
+    end)
+  elseif event == "MINIMAP_UPDATE_TRACKING" or event == "UNIT_AURA" then
+    OnTrackingMaybeChanged()
   end
 end)
 
+---------------------------------------------------------------------------
+-- Route recorder: /gc record walks a loop and saves it in Routes.lua format
+---------------------------------------------------------------------------
+local rec  -- { map, zone, prof, pts = {x,y,...}, lastWX, lastWY }
+local function NPts(r) return floor(#r.pts / 2) end
+local function Num(v) return (string.format("%.1f", v):gsub("%.0$", "")) end  -- 45.0 -> "45", 45.25 -> "45.3"
+
+local function RecAdd(force)
+  local mapID, x, y = PlayerPos()
+  if not mapID then return end
+  if mapID ~= rec.map then
+    if force then Print("you're on a different map than the recording; point not added.") end
+    return
+  end
+  local wx, wy = ToWorld(mapID, x, y)
+  if not force and rec.lastWX and wx then
+    local d = sqrt((wx - rec.lastWX) ^ 2 + (wy - rec.lastWY) ^ 2)
+    if d < (DB().recStep or REC_STEP) then return end
+  end
+  rec.pts[#rec.pts + 1] = x * 100
+  rec.pts[#rec.pts + 1] = y * 100
+  rec.lastWX, rec.lastWY = wx, wy
+  if force then Print("point " .. NPts(rec) .. " added.") end
+end
+
+local recTicker
+local function RecordCommand(arg)
+  local sub, rest = (arg or ""):match("^(%S*)%s*(.-)$")
+  if sub == "" or sub == "start" then
+    if rec then return Print("already recording (" .. NPts(rec) .. " points). /gc record stop to save.") end
+    local mapID = C_Map.GetBestMapForUnit("player")
+    local info = mapID and C_Map.GetMapInfo(mapID)
+    if not info then return Print("can't read your map position here.") end
+    rec = { map = mapID, zone = info.name, pts = {}, prof = state.lastTrack or "Mining" }
+    RecAdd(false)  -- first point: always added, since there's no previous one
+    recTicker = C_Timer.NewTicker(0.5, function() RecAdd(false) end)
+    Print("recording a " .. rec.prof .. " route in " .. rec.zone .. ". Walk your loop; a point is added every "
+      .. (DB().recStep or REC_STEP) .. " yd. /gc record point adds one now, /gc record stop saves.")
+  elseif sub == "point" then
+    if not rec then return Print("not recording. /gc record to start.") end
+    RecAdd(true)
+  elseif sub == "stop" or sub == "cancel" then
+    if not rec then return Print("not recording.") end
+    if recTicker then recTicker:Cancel(); recTicker = nil end
+    local r = rec; rec = nil
+    if sub == "cancel" then return Print("recording thrown away.") end
+    if #r.pts < 6 then return Print("only " .. NPts(r) .. " points recorded; a route needs at least 3. Nothing saved.") end
+    local nums = {}
+    for i = 1, #r.pts, 2 do nums[#nums + 1] = Num(r.pts[i]) .. "," .. Num(r.pts[i + 1]) end
+    local id = (r.zone .. "-" .. r.prof):lower():gsub("'", ""):gsub("[^%w]+", "-")
+    local entry = string.format('{ id="%s", zone="%s", map=%d, prof="%s", ore="CHANGE ME", levels="?",\n    pts={ %s } },',
+      id, r.zone, r.map, r.prof, table.concat(nums, ", "))
+    local db = DB()
+    db.recorded = db.recorded or {}
+    db.recorded[#db.recorded + 1] = entry
+    Print("saved " .. NPts(r) .. " points as recording #" .. #db.recorded
+      .. ". Log out or /reload, then copy it from WTF\\Account\\<account>\\SavedVariables\\GoblinCompass.lua (look for \"recorded\").")
+  elseif sub == "clear" then
+    DB().recorded = nil
+    Print("saved recordings cleared.")
+  elseif sub == "step" then
+    local n = tonumber(rest)
+    if not n or n < 5 then return Print("usage: /gc record step <yards>, e.g. /gc record step 40") end
+    DB().recStep = n
+    Print("recording step: " .. n .. " yd")
+  else
+    Print("/gc record [start] | point | stop | cancel | clear | step <yards>")
+  end
+end
+
 local function ListRoutes()
   Print("planned routes (use /gc route <text>):")
-  for _, ore in ipairs(ORE_ORDER) do
+  for _, ore in ipairs(RouteResources()) do
     for _, r in ipairs(AllRoutes()) do
       if r.ore == ore then print("  " .. ore .. ": " .. RouteLabel(r) .. "  |cff888888[" .. r.id .. "]|r") end
     end
@@ -774,6 +1074,8 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
     ListRoutes()
   elseif cmd == "reverse" then
     SetReverse(not DB().reverse); Print("route direction: " .. (DB().reverse and "reverse" or "normal"))
+  elseif cmd == "on" or cmd == "off" or cmd == "toggle" then
+    SetEnabled(cmd == "on" or (cmd == "toggle" and not IsEnabled()))
   elseif cmd == "stop" then
     Stop()
   elseif cmd == "skip" then
@@ -783,9 +1085,14 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
   elseif cmd == "filter" then
     DB().filter = rest; state.target = nil
     Print(rest == "" and "filter cleared." or ("filter: " .. rest))
+  elseif cmd == "record" then
+    RecordCommand(rest)
+  elseif cmd == "auto" then
+    SetAutoMode(DB().autoTrack == false)
+    Print("choosing: " .. (DB().autoTrack and "automatic (from tracking)" or "manual"))
   elseif cmd == "debug" then
     Debug()
   else
-    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | debug")
+    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | on | off | auto | record | debug")
   end
 end

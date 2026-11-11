@@ -7,16 +7,27 @@ A World of Warcraft **Classic Era** addon that puts a guide arrow on your screen
 - **Node mode** - points at the nearest known node for the profession you pick (Mining, Herbalism, Fishing, Treasure). Node locations come from [GatherMate2](https://www.curseforge.com/wow/addons/gathermate2), which you need installed. Nodes you reach are skipped, then come back after 10 minutes.
 - **Planned zone routes** - ignores GatherMate2 and walks you around a fixed farming loop for the zone you choose. 19 routes across 16 zones (copper, tin, iron, mithril, thorium), traced from the route maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide.
 
+## Auto-pick from tracking
+
+Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow starts by itself:
+
+- **Find Minerals** in a zone with a planned route starts that route. If the zone has more than one (The Barrens has Copper and Tin), it picks the highest ore your Mining skill can gather.
+- Anywhere else, it points at the nearest GatherMate2 node for that profession.
+- It re-picks when you change zones or switch tracking. Anything you choose by hand, or **Stop**, stays until you switch tracking again.
+- Switch between **Automatic** and **Manual** on the options page, in the right-click quick menu, or with `/gc auto`.
+
 ## Install
 
-1. Download this repo (green **Code** button, **Download ZIP**) or a release zip.
-2. Copy the `GoblinCompass` folder into `World of Warcraft\_classic_era_\Interface\AddOns\`.
+1. Install from CurseForge (CurseForge app, WowUp, etc.), or download the zip from the latest [GitHub release](https://github.com/MehKoiter/goblin-compass/releases).
+2. Manual install: extract the release zip into your game's `Interface\AddOns\` folder, so you end up with `Interface\AddOns\GoblinCompass\GoblinCompass.toc`.
+   - The green **Code > Download ZIP** button gives the development version instead. Its files are one folder deeper (move the inner `GoblinCompass` folder into `AddOns`), and its version shows as `@project-version@`.
 3. Start the game. If it shows as out of date, tick **Load out of date AddOns** on the character screen.
 
 ## Use
 
-- Click the minimap button (pickaxe) for the menu, or right-click it for options.
-- Right-click the arrow for the same menu. Drag the arrow to move it.
+- The addon starts **off**. **Left-click** the minimap button (pickaxe) to turn it on or off: the icon is in full color when on, grey when off.
+- **Right-click** the minimap button (or the arrow) for a quick menu: Enabled, Automatic / Manual, walk route in reverse, skip this node / waypoint, clear visited nodes, and **Options...**.
+- Everything else (picking a profession or route, stopping) is on the options page. Drag the arrow to move it.
 - Slash commands (`/gc` or `/goblin`):
 
 | Command | What it does |
@@ -29,14 +40,46 @@ A World of Warcraft **Classic Era** addon that puts a guide arrow on your screen
 | `/gc reverse` | walk routes the other way |
 | `/gc skip` `stop` `reset` | skip node/waypoint, stop, clear visited nodes |
 | `/gc filter copper` | node mode: only nodes whose name contains this |
+| `/gc record` | record a new route by walking it (see [Adding routes](docs/adding-routes.md)) |
+| `/gc on` `off` | turn the addon on or off (same as left-clicking the minimap button) |
+| `/gc auto` | switch between automatic (from tracking) and manual |
 | `/gc options` | open the options page |
 | `/gc debug` | print map ID and GatherMate2 data info (useful for bug reports) |
+
+## Adding routes (herbs, fishing, treasure and more)
+
+Routes aren't limited to mining. Any profession can have them, and you can record one by walking it in game:
+
+```
+/gc record        start recording (turn on Find Herbs / Find Minerals first)
+/gc record point  add a waypoint where you stand
+/gc record stop   save it, then /reload and copy it from SavedVariables
+```
+
+See **[docs/adding-routes.md](docs/adding-routes.md)** for the route format, the fields, how to test a route, and how to send it in.
 
 ## Notes and limitations
 
 - Routes are traced from images, so they are accurate to about 1-2% of the map. Good for following a loop, not exact. The Arathi Highlands mithril route is approximate.
 - Routes only guide inside their zone; they don't navigate between zones.
+- The bundled routes are mining only so far. Herbalism, Fishing and Treasure use node mode until someone adds routes for them.
 - Developed without access to a live client, so please report anything odd (include the output of `/gc debug`).
+
+## Releasing
+
+Pushing a version tag builds the addon zip and publishes it, using the
+[BigWigs packager](https://github.com/BigWigsMods/packager) (`.github/workflows/release.yml`, `.pkgmeta`).
+
+```bash
+git tag v0.9
+git push origin v0.9
+```
+
+- The tag becomes the version shown in game (`## Version: @project-version@` in the TOC).
+- A GitHub release with the zip is always created.
+- Uploading to CurseForge needs two settings under **Settings > Secrets and variables > Actions**:
+  - secret `CF_API_KEY`: a CurseForge API token (CurseForge > account settings > API tokens)
+  - variable `CURSEFORGE_PROJECT_ID`: the project ID from the CurseForge project page's "About Project" box
 
 ## Credits
 

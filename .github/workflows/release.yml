@@ -1,0 +1,28 @@
+# Builds the addon zip and publishes it whenever a version tag (e.g. v0.9) is pushed.
+# - GitHub release: always (uses the built-in GITHUB_TOKEN).
+# - CurseForge: when the CF_API_KEY secret and CURSEFORGE_PROJECT_ID variable are set
+#   (repo Settings > Secrets and variables > Actions).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history, so the changelog can list commits since the last tag
+
+      - uses: BigWigsMods/packager@v2
+        with:
+          args: ${{ vars.CURSEFORGE_PROJECT_ID != '' && format('-p {0}', vars.CURSEFORGE_PROJECT_ID) || '' }}
