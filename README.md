@@ -5,7 +5,7 @@ A World of Warcraft **Classic Era** addon that puts a guide arrow on your screen
 ## Three ways to farm
 
 - **Node mode** - points at the nearest known node for the profession you pick (Mining, Herbalism, Fishing, Treasure). Node locations come from [GatherMate2](https://www.curseforge.com/wow/addons/gathermate2), which you need installed. Nodes you reach are skipped, then come back after 10 minutes.
-- **Planned zone routes** - ignores GatherMate2 and walks you around a fixed farming loop for the zone you choose. 19 routes across 16 zones (copper, tin, iron, mithril, thorium), traced from the route maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide.
+- **Planned zone routes** - ignores GatherMate2 and walks you around a fixed farming loop for the zone you choose. 19 routes across 16 zones (copper, tin, iron, mithril, thorium). Most are traced from the route maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide; the Mulgore copper route was walked and recorded in game.
 - **Generated routes** - builds a loop for any profession and zone from your GatherMate2 data: it groups nearby nodes into spots, keeps the densest ones your skill can gather, and plans a short loop through them. Great for herbs, which have no planned routes yet. Routes go in straight lines between spots, so in hilly zones you may need to walk around the odd obstacle.
 
 ## Auto-pick from tracking
@@ -64,7 +64,7 @@ See **[docs/adding-routes.md](docs/adding-routes.md)** for the route format, the
 
 ## Notes and limitations
 
-- Routes are traced from images, so they are accurate to about 1-2% of the map. Good for following a loop, not exact. The Arathi Highlands mithril route is approximate.
+- Routes traced from images are accurate to about 1-2% of the map. Good for following a loop, not exact. The Arathi Highlands mithril route is approximate.
 - Routes only guide inside their zone; they don't navigate between zones.
 - The bundled routes are mining only so far. Herbalism, Fishing and Treasure use node mode until someone adds routes for them.
 - Developed without access to a live client, so please report anything odd (include the output of `/gc debug`).
@@ -80,7 +80,7 @@ What's planned next: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ## Credits
 
-- Route shapes are traced from maps by the author of Wowhead's ore farming guide. All credit for the routes themselves goes to them.
+- Most route shapes are traced from maps by the author of Wowhead's ore farming guide. All credit for those routes goes to them.
 - Node data is read from GatherMate2 by its authors; GatherMate2 is not bundled.
 
 ## License
