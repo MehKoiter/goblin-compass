@@ -76,7 +76,7 @@ Use `/gc` or `/goblin`.
 
 ## Good to know
 
-- Routes were traced from map images, so they're accurate to about 1-2% of the map: great for following a loop, but not pixel-perfect. The Arathi Highlands Mithril route is approximate.
+- Routes traced from map images are accurate to about 1-2% of the map: great for following a loop, but not pixel-perfect. The Arathi Highlands Mithril route is approximate.
 - Routes guide you within their zone. They don't navigate you between zones.
 - Planned routes currently cover mining only. For herbs (and anywhere else without one), Goblin Compass generates a route from GatherMate2 data. Generated routes go in straight lines between spots, so in hilly zones you may need to walk around the odd obstacle.
 
@@ -90,7 +90,7 @@ Found a bug or have an idea? Please leave a comment or open an issue. For bugs, 
 
 ## Credits
 
-- Route shapes are traced from the maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide. All credit for the routes themselves goes to its author.
+- Most route shapes are traced from the maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide. All credit for the routes themselves goes to its author.
 - Node data comes from **GatherMate2** and its authors. GatherMate2 is not bundled with this addon.
 
 Licensed under the MIT License.
