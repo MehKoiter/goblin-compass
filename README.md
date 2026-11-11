@@ -76,6 +76,8 @@ See **[docs/adding-routes.md](docs/adding-routes.md)** for the route format, the
 
 Full steps, the in-game test checklist and setup notes: **[docs/releasing.md](docs/releasing.md)**.
 
+What's planned next: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+
 ## Credits
 
 - Route shapes are traced from maps by the author of Wowhead's ore farming guide. All credit for the routes themselves goes to them.
