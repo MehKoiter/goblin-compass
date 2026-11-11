@@ -1,0 +1,23 @@
+# Runs on every pull request and every push to main: a Lua 5.1 syntax check of
+# the addon files, then the logic tests in tests/run.lua.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Lua 5.1 (the version WoW uses)
+        run: sudo apt-get update -q && sudo apt-get install -y -q lua5.1
+
+      - name: Syntax check
+        run: luac5.1 -p GoblinCompass/*.lua
+
+      - name: Logic tests
+        run: lua5.1 tests/run.lua

@@ -12,12 +12,13 @@ Turn on **Find Minerals** and it gets going by itself.
 Switch on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow starts on its own, no menus needed.
 
 - **Find Minerals** in a zone with a planned route starts that route. If the zone has more than one, it picks the best ore your Mining skill can gather (e.g. Tin over Copper in The Barrens once you reach 65).
-- Anywhere else, it points you to the nearest known node for that profession.
+- Anywhere else, it generates a route for you from GatherMate2 data, or points to the nearest known node if there are too few.
 - Changes zone or tracking? It picks again. Prefer to choose yourself? Switch to **Manual** in the options.
 
-### Two ways to farm
+### Three ways to farm
 - **Node mode:** points at the nearest known Mining, Herbalism, Fishing or Treasure node, using the node database from **GatherMate2**. Nodes you've just visited are skipped for 10 minutes while they respawn.
 - **Planned routes:** walks you around a proven farming loop, waypoint by waypoint. No GatherMate2 needed.
+- **Generated routes:** builds a loop for any herb, ore or zone from your GatherMate2 data: only nodes your skill can gather, densest spots first. Try `/gc generate` or `/gc generate kingsblood`.
 
 ### 19 mining routes across 16 zones
 
@@ -58,6 +59,8 @@ Use `/gc` or `/goblin`.
 | `/gc stop` | Stop guiding |
 | `/gc reset` | Forget visited nodes |
 | `/gc filter copper` | Node mode: only nodes whose name contains this text |
+| `/gc generate` | Generate a route for this zone from GatherMate2 data |
+| `/gc generate kingsblood` | Generate a route for one herb or ore |
 | `/gc auto` | Switch between automatic (from tracking) and manual |
 | `/gc options` | Open the options page |
 | `/gc debug` | Print diagnostic info (handy for bug reports) |
@@ -75,7 +78,7 @@ Use `/gc` or `/goblin`.
 
 - Routes were traced from map images, so they're accurate to about 1-2% of the map: great for following a loop, but not pixel-perfect. The Arathi Highlands Mithril route is approximate.
 - Routes guide you within their zone. They don't navigate you between zones.
-- Planned routes currently cover mining only. Herbalism, Fishing and Treasure use node mode.
+- Planned routes currently cover mining only. For herbs (and anywhere else without one), Goblin Compass generates a route from GatherMate2 data. Generated routes go in straight lines between spots, so in hilly zones you may need to walk around the odd obstacle.
 
 ---
 

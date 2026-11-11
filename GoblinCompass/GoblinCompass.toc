@@ -7,6 +7,7 @@
 ## OptionalDeps: GatherMate2, GatherMate2_Data
 ## SavedVariables: GoblinCompassDB
 ## X-License: MIT
+## X-Curse-Project-ID: 1794969
 ## X-Website: https://github.com/MehKoiter/goblin-compass
 
 Routes.lua
