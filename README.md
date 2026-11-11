@@ -2,17 +2,18 @@
 
 A World of Warcraft **Classic Era** addon that puts a guide arrow on your screen (like the Zygor/TomTom arrow) and walks you to ore, herbs and fish.
 
-## Two modes
+## Three ways to farm
 
 - **Node mode** - points at the nearest known node for the profession you pick (Mining, Herbalism, Fishing, Treasure). Node locations come from [GatherMate2](https://www.curseforge.com/wow/addons/gathermate2), which you need installed. Nodes you reach are skipped, then come back after 10 minutes.
 - **Planned zone routes** - ignores GatherMate2 and walks you around a fixed farming loop for the zone you choose. 19 routes across 16 zones (copper, tin, iron, mithril, thorium), traced from the route maps in Wowhead's [Best Mining and Ore Farming Routes](https://www.wowhead.com/classic/guide/classic-mining-best-farming-basics-early-ores) guide.
+- **Generated routes** - builds a loop for any profession and zone from your GatherMate2 data: it groups nearby nodes into spots, keeps the densest ones your skill can gather, and plans a short loop through them. Great for herbs, which have no planned routes yet. Routes go in straight lines between spots, so in hilly zones you may need to walk around the odd obstacle.
 
 ## Auto-pick from tracking
 
 Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow starts by itself:
 
 - **Find Minerals** in a zone with a planned route starts that route. If the zone has more than one (The Barrens has Copper and Tin), it picks the highest ore your Mining skill can gather.
-- Anywhere else, it points at the nearest GatherMate2 node for that profession.
+- Anywhere else, it generates a route from GatherMate2 data (turn this off on the options page), or, if there are too few known nodes, points at the nearest one.
 - It re-picks when you change zones or switch tracking. Anything you choose by hand, or **Stop**, stays until you switch tracking again.
 - Switch between **Automatic** and **Manual** on the options page, in the right-click quick menu, or with `/gc auto`.
 
@@ -40,6 +41,9 @@ Turn on **Find Minerals**, **Find Herbs** or **Find Treasure** and the arrow sta
 | `/gc reverse` | walk routes the other way |
 | `/gc skip` `stop` `reset` | skip node/waypoint, stop, clear visited nodes |
 | `/gc filter copper` | node mode: only nodes whose name contains this |
+| `/gc generate` | generate a route for this zone from GatherMate2 data |
+| `/gc generate kingsblood` | generate a route for one herb or ore |
+| `/gc generate save` | save the generated route you're following, to turn it into a planned route |
 | `/gc record` | record a new route by walking it (see [Adding routes](docs/adding-routes.md)) |
 | `/gc on` `off` | turn the addon on or off (same as left-clicking the minimap button) |
 | `/gc auto` | switch between automatic (from tracking) and manual |

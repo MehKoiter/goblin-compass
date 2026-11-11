@@ -14,6 +14,29 @@ local PROF_TYPE  = { Mining = "Mining", Herbalism = "Herb Gathering", Fishing = 
 local ORE_ORDER  = { "Copper", "Tin", "Iron", "Mithril", "Thorium" }
 local ORE_SKILL  = { Copper = 1, Tin = 65, Iron = 125, Mithril = 175, Thorium = 230 }  -- Mining skill needed
 local REC_STEP   = 40     -- /gc record: drop a waypoint every this many yards walked
+-- generated routes: nodes within GEN_CELL yards form one "spot"; the route visits the
+-- GEN_MAX densest spots and needs at least GEN_MIN of them
+local GEN_CELL, GEN_MAX, GEN_MIN = 80, 60, 3
+local PROF_NOUN = { Mining = "Ore", Herbalism = "Herbs", Fishing = "Fish", Treasure = "Treasure" }
+-- skill needed to gather each node (Classic values, English names; unknown names are allowed)
+local NODE_SKILL = {
+  -- herbs
+  ["Peacebloom"] = 1, ["Silverleaf"] = 1, ["Earthroot"] = 15, ["Mageroyal"] = 50, ["Briarthorn"] = 70,
+  ["Stranglekelp"] = 85, ["Bruiseweed"] = 100, ["Wild Steelbloom"] = 115, ["Grave Moss"] = 120,
+  ["Kingsblood"] = 125, ["Liferoot"] = 150, ["Fadeleaf"] = 160, ["Goldthorn"] = 170,
+  ["Khadgar's Whisker"] = 185, ["Wintersbite"] = 195, ["Firebloom"] = 205, ["Purple Lotus"] = 210,
+  ["Arthas' Tears"] = 220, ["Sungrass"] = 230, ["Blindweed"] = 235, ["Ghost Mushroom"] = 245,
+  ["Gromsblood"] = 250, ["Golden Sansam"] = 260, ["Dreamfoil"] = 270, ["Mountain Silversage"] = 280,
+  ["Plaguebloom"] = 285, ["Icecap"] = 290, ["Black Lotus"] = 300,
+  -- ore
+  ["Copper Vein"] = 1, ["Tin Vein"] = 65, ["Incendicite Mineral"] = 65, ["Silver Vein"] = 75,
+  ["Ooze Covered Silver Vein"] = 75, ["Lesser Bloodstone Deposit"] = 75, ["Iron Deposit"] = 125,
+  ["Indurium Mineral Vein"] = 150, ["Gold Vein"] = 155, ["Ooze Covered Gold Vein"] = 155,
+  ["Mithril Deposit"] = 175, ["Ooze Covered Mithril Deposit"] = 175, ["Truesilver Deposit"] = 230,
+  ["Ooze Covered Truesilver Deposit"] = 230, ["Dark Iron Deposit"] = 230, ["Small Thorium Vein"] = 230,
+  ["Ooze Covered Thorium Vein"] = 230, ["Rich Thorium Vein"] = 255, ["Ooze Covered Rich Thorium Vein"] = 255,
+  ["Hakkari Thorium Vein"] = 255,
+}
 -- tracking abilities -> profession (Find Minerals, Find Herbs, Find Treasure)
 local TRACK_SPELLS = { [2580] = "Mining", [2383] = "Herbalism", [2481] = "Treasure" }
 local ALIASES = {
@@ -163,7 +186,8 @@ local function AllRoutes() return GoblinCompassRoutes or {} end
 local function RouteLabel(r)
   local s = r.zone
   if r.note then s = s .. " - " .. r.note end
-  return s .. " (" .. r.levels .. ")"
+  if r.levels and r.levels ~= "" then s = s .. " (" .. r.levels .. ")" end
+  return s
 end
 
 local function NormZone(s)
@@ -504,6 +528,104 @@ local function BestRouteHere(prof)
   return best or first
 end
 
+---------------------------------------------------------------------------
+-- Generated routes: a loop through the densest GatherMate2 node spots in this zone
+---------------------------------------------------------------------------
+local genCache = {}
+
+local function Dist(a, b) return sqrt((a.wx - b.wx) ^ 2 + (a.wy - b.wy) ^ 2) end
+
+-- order the spots into a short loop: nearest-neighbour, then 2-opt (undo crossings)
+local function PlanLoop(spots)
+  local n = #spots
+  local tour, used = { spots[1] }, { [1] = true }
+  for _ = 2, n do
+    local cur, bi, bd = tour[#tour], nil, nil
+    for i = 1, n do
+      if not used[i] then
+        local d = Dist(cur, spots[i])
+        if not bd or d < bd then bi, bd = i, d end
+      end
+    end
+    used[bi] = true
+    tour[#tour + 1] = spots[bi]
+  end
+  local improved, passes = true, 0
+  while improved and passes < 50 do
+    improved, passes = false, passes + 1
+    for i = 1, n - 2 do
+      for j = i + 2, n do
+        if not (i == 1 and j == n) then
+          local a, b, c, d = tour[i], tour[i + 1], tour[j], tour[j % n + 1]
+          if Dist(a, c) + Dist(b, d) < Dist(a, b) + Dist(c, d) - 0.01 then
+            local lo, hi = i + 1, j  -- reverse tour[i+1 .. j]
+            while lo < hi do tour[lo], tour[hi] = tour[hi], tour[lo]; lo, hi = lo + 1, hi - 1 end
+            improved = true
+          end
+        end
+      end
+    end
+  end
+  return tour
+end
+
+if GOBLINCOMPASS_TEST then GOBLINCOMPASS_TEST.PlanLoop = PlanLoop end  -- tests/run.lua only
+
+-- returns route or nil, reason. filter: optional text a node name must contain.
+-- fresh: rebuild even if this zone/profession/skill was generated before (picks up new nodes)
+local function GenerateRoute(prof, filter, fresh)
+  local mapID = C_Map.GetBestMapForUnit("player")
+  local info = mapID and C_Map.GetMapInfo(mapID)
+  if not (info and info.name) then return nil, "can't read your map position here." end
+  filter = (filter and filter ~= "") and filter:lower() or nil
+  local skill = ProfSkill(prof)
+  local key = table.concat({ mapID, prof, tostring(skill), filter or "" }, ":")
+  if genCache[key] and not fresh then return genCache[key] end
+
+  TryLoadData()
+  local nodes = BuildNodes(prof, mapID)
+  if #nodes == 0 then return nil, "GatherMate2 has no " .. prof .. " nodes for " .. info.name .. "." end
+
+  -- group the nodes you can gather into spots
+  local cells, spots, names, nameCount, kept = {}, {}, {}, 0, 0
+  for _, nd in ipairs(nodes) do
+    local name = NodeName(prof, nd.id)
+    local need = NODE_SKILL[name] or 1
+    if (not skill or skill >= need) and (not filter or name:lower():find(filter, 1, true)) then
+      kept = kept + 1
+      if not names[name] then names[name] = true; nameCount = nameCount + 1 end
+      local k = floor(nd.wx / GEN_CELL) .. ":" .. floor(nd.wy / GEN_CELL)
+      local c = cells[k]
+      if not c then c = { n = 0, wx = 0, wy = 0, x = 0, y = 0 }; cells[k] = c; spots[#spots + 1] = c end
+      c.n, c.wx, c.wy, c.x, c.y = c.n + 1, c.wx + nd.wx, c.wy + nd.wy, c.x + nd.x, c.y + nd.y
+    end
+  end
+  if kept == 0 then
+    return nil, "no " .. prof .. " nodes " .. (filter and ("matching '" .. filter .. "' ") or "")
+      .. "that your skill can gather in " .. info.name .. "."
+  end
+  for _, c in ipairs(spots) do c.wx, c.wy, c.x, c.y = c.wx / c.n, c.wy / c.n, c.x / c.n, c.y / c.n end
+  -- densest spots first; keep the best GEN_MAX
+  table.sort(spots, function(a, b) return a.n > b.n end)
+  for i = #spots, GEN_MAX + 1, -1 do spots[i] = nil end
+  if #spots < GEN_MIN then
+    return nil, "only " .. #spots .. " node spot(s) known in " .. info.name .. "; not enough for a route."
+  end
+
+  local pts = {}
+  for _, c in ipairs(PlanLoop(spots)) do
+    pts[#pts + 1] = floor(c.x * 1000 + 0.5) / 10
+    pts[#pts + 1] = floor(c.y * 1000 + 0.5) / 10
+  end
+  local only = nameCount == 1 and next(names) or nil
+  local route = {
+    id = "generated", generated = true, zone = info.name, map = mapID, prof = prof,
+    ore = only or PROF_NOUN[prof] or prof, note = "generated", nodes = kept, pts = pts,
+  }
+  genCache[key] = route
+  return route
+end
+
 -- force: tracking just changed, so override whatever was chosen by hand
 local function AutoPick(force)
   if not IsEnabled() or DB().autoTrack == false then return end
@@ -514,6 +636,7 @@ local function AutoPick(force)
   end
   if not force and ((state.mode and not state.auto) or state.userStopped) then return end
   local r = BestRouteHere(prof)
+  if not r and DB().autoGenerate ~= false then r = GenerateRoute(prof) end
   if r then
     if not (state.mode == "route" and state.route == r) then StartRoute(r, true) end
     state.auto = true
@@ -846,6 +969,8 @@ end
 local rev  = MakeCheck("GoblinCompassReverseCheck", "Walk planned routes in reverse", edit, -14, SetReverse)
 local lock = MakeCheck("GoblinCompassLockCheck", "Lock arrow position", rev, -2, function(v) DB().locked = v end)
 local mmCheck = MakeCheck("GoblinCompassMinimapCheck", "Show minimap button", lock, -2, SetMinimapShown)
+local genCheck = MakeCheck("GoblinCompassGenerateCheck", "Automatic: generate a route from GatherMate2 when a zone has no planned one",
+  mmCheck, -2, function(v) DB().autoGenerate = v end)
 
 local function MakeSlider(name, label, minv, maxv, step, anchor, onChange)
   local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
@@ -864,7 +989,7 @@ local function MakeSlider(name, label, minv, maxv, step, anchor, onChange)
   return s
 end
 
-local scale = MakeSlider("GoblinCompassScaleSlider", "Arrow size", 0.5, 2.5, 0.1, mmCheck, function(v)
+local scale = MakeSlider("GoblinCompassScaleSlider", "Arrow size", 0.5, 2.5, 0.1, genCheck, function(v)
   DB().scale = v; arrow:SetScale(v)
 end)
 local arrive = MakeSlider("GoblinCompassArriveSlider", "Node arrival distance (yd)", 5, 40, 1, scale, function(v)
@@ -897,6 +1022,24 @@ stopBtn:SetSize(150, 24)
 stopBtn:SetPoint("LEFT", skipBtn, "RIGHT", 8, 0)
 stopBtn:SetText("Stop guiding")
 stopBtn:SetScript("OnClick", function() Stop(); RefreshDropdownText() end)
+local genBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+genBtn:SetSize(150, 24)
+genBtn:SetPoint("LEFT", stopBtn, "RIGHT", 8, 0)
+genBtn:SetText("Generate route")
+genBtn:SetScript("OnClick", function()
+  -- the profession you're on now, else the one you're tracking
+  local prof = state.prof or (state.route and RouteProf(state.route)) or state.lastTrack or "Mining"
+  local r, why = GenerateRoute(prof, nil, true)
+  if r then StartRoute(r) else Print(why) end
+  RefreshDropdownText()
+end)
+genBtn:SetScript("OnEnter", function(self)
+  GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine("Generate route")
+  GameTooltip:AddLine("Builds a loop through the densest GatherMate2 node spots in this zone that your skill can gather. "
+    .. "Uses the profession you're guiding to, or the one you're tracking.", 1, 1, 1, true)
+  GameTooltip:Show()
+end)
+genBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 local function RefreshPanel()
   RefreshDropdownText()
@@ -904,6 +1047,7 @@ local function RefreshPanel()
   rev:SetChecked(DB().reverse and true or false)
   lock:SetChecked(DB().locked and true or false)
   mmCheck:SetChecked(not DB().hideMinimap)
+  genCheck:SetChecked(DB().autoGenerate ~= false)
   RefreshModeRadios()
   enCheck:SetChecked(IsEnabled())
   scale:SetValue(DB().scale or 1)
@@ -988,6 +1132,22 @@ local function RecAdd(force)
   if force then Print("point " .. NPts(rec) .. " added.") end
 end
 
+-- a route as a ready-to-paste Routes.lua entry
+local function FormatRouteEntry(zone, map, prof, ore, levels, pts)
+  local nums = {}
+  for i = 1, #pts, 2 do nums[#nums + 1] = Num(pts[i]) .. "," .. Num(pts[i + 1]) end
+  local id = (zone .. "-" .. (ore ~= "CHANGE ME" and ore or prof)):lower():gsub("'", ""):gsub("[^%w]+", "-")
+  return string.format('{ id="%s", zone="%s", map=%d, prof="%s", ore="%s", levels="%s",\n    pts={ %s } },',
+    id, zone, map, prof, ore, levels, table.concat(nums, ", "))
+end
+
+local function SaveRecording(entry)
+  local db = DB()
+  db.recorded = db.recorded or {}
+  db.recorded[#db.recorded + 1] = entry
+  return #db.recorded
+end
+
 local recTicker
 local function RecordCommand(arg)
   local sub, rest = (arg or ""):match("^(%S*)%s*(.-)$")
@@ -1010,15 +1170,8 @@ local function RecordCommand(arg)
     local r = rec; rec = nil
     if sub == "cancel" then return Print("recording thrown away.") end
     if #r.pts < 6 then return Print("only " .. NPts(r) .. " points recorded; a route needs at least 3. Nothing saved.") end
-    local nums = {}
-    for i = 1, #r.pts, 2 do nums[#nums + 1] = Num(r.pts[i]) .. "," .. Num(r.pts[i + 1]) end
-    local id = (r.zone .. "-" .. r.prof):lower():gsub("'", ""):gsub("[^%w]+", "-")
-    local entry = string.format('{ id="%s", zone="%s", map=%d, prof="%s", ore="CHANGE ME", levels="?",\n    pts={ %s } },',
-      id, r.zone, r.map, r.prof, table.concat(nums, ", "))
-    local db = DB()
-    db.recorded = db.recorded or {}
-    db.recorded[#db.recorded + 1] = entry
-    Print("saved " .. NPts(r) .. " points as recording #" .. #db.recorded
+    local n = SaveRecording(FormatRouteEntry(r.zone, r.map, r.prof, "CHANGE ME", "?", r.pts))
+    Print("saved " .. NPts(r) .. " points as recording #" .. n
       .. ". Log out or /reload, then copy it from WTF\\Account\\<account>\\SavedVariables\\GoblinCompass.lua (look for \"recorded\").")
   elseif sub == "clear" then
     DB().recorded = nil
@@ -1031,6 +1184,40 @@ local function RecordCommand(arg)
   else
     Print("/gc record [start] | point | stop | cancel | clear | step <yards>")
   end
+end
+
+-- /gc generate [profession] [node name]  |  /gc generate save
+local function GenerateCommand(arg)
+  arg = arg or ""
+  if arg == "save" then
+    local r = state.route
+    if not (state.mode == "route" and r and r.generated) then return Print("not following a generated route right now.") end
+    local n = SaveRecording(FormatRouteEntry(r.zone, r.map, r.prof, r.ore, "?", r.pts))
+    return Print("saved this generated route as recording #" .. n .. ". Log out or /reload, then copy it from SavedVariables"
+      .. " (see docs/adding-routes.md).")
+  end
+  local first, rest = arg:match("^(%S*)%s*(.-)$")
+  local profs, filter
+  if ALIASES[first] then
+    profs, filter = { ALIASES[first] }, rest
+  else
+    -- no profession given: try the one you're on or tracking first, then the rest
+    filter = arg
+    local mine = state.prof or (state.route and RouteProf(state.route)) or state.lastTrack
+    profs = { mine }
+    for _, p in ipairs(PROF_ORDER) do if p ~= mine then profs[#profs + 1] = p end end
+    if not filter or filter == "" then profs = { mine or "Mining" } end
+  end
+  local firstWhy
+  for _, prof in ipairs(profs) do
+    local r, why = GenerateRoute(prof, filter, true)
+    if r then
+      Print(string.format("generated a %s route through %d spots (%d nodes) in %s.", prof, #r.pts / 2, r.nodes, r.zone))
+      return StartRoute(r)
+    end
+    firstWhy = firstWhy or why
+  end
+  Print(firstWhy)
 end
 
 local function ListRoutes()
@@ -1085,6 +1272,8 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
   elseif cmd == "filter" then
     DB().filter = rest; state.target = nil
     Print(rest == "" and "filter cleared." or ("filter: " .. rest))
+  elseif cmd == "generate" or cmd == "gen" then
+    GenerateCommand(rest)
   elseif cmd == "record" then
     RecordCommand(rest)
   elseif cmd == "auto" then
@@ -1093,6 +1282,6 @@ SlashCmdList["GOBLINCOMPASS"] = function(msg)
   elseif cmd == "debug" then
     Debug()
   else
-    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | on | off | auto | record | debug")
+    Print("/gc (menu) | /gc options | /gc mining|herb|fish|treasure | /gc route [zone/ore] | routes | reverse | stop | skip | reset | filter <text> | on | off | auto | generate [herb/ore] | record | debug")
   end
 end

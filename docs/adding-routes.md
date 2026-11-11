@@ -15,6 +15,10 @@ If a zone has several routes for that profession, the addon picks the highest on
 
 There's no fish-tracking ability in Classic, so `Fishing` routes are only started by hand, from the route list on the options page or with `/gc route`.
 
+## Shortcut: start from a generated route
+
+If GatherMate2 knows the zone well, `/gc generate` (or `/gc generate <herb or ore name>`) builds a route from its node data, and `/gc generate save` saves the one you're following in the same format as a recording (step 1, part 6). Generated routes take straight lines between spots, so walk it once to check it doesn't run into cliffs or water; if it does, record a corrected loop instead.
+
 ## 1. Record the route in game
 
 The easiest way to get accurate coordinates is to walk the loop yourself.

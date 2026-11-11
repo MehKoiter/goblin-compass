@@ -83,6 +83,28 @@ table.insert(GoblinCompassRoutes, { id = "test-peacebloom", zone = "The Barrens"
   ore = "Peacebloom", levels = "10-25", pts = { 40, 30, 45, 30, 45, 35 } })
 table.insert(GoblinCompassRoutes, { id = "test-bruiseweed", zone = "The Barrens", map = 1413, prof = "Herbalism",
   ore = "Bruiseweed", skill = 100, levels = "10-25", pts = { 40, 30, 45, 30, 45, 35 } })
+GOBLINCOMPASS_TEST = {}  -- asks the addon to expose a few internals for testing
+
+-- GatherMate2 stand-in: herb nodes in Ashenvale (map 1440, which has no planned routes).
+-- 1% of the map is 10 yd here, so each group of 3 nodes is one "spot".
+local HERB_NAMES = { [1] = "Peacebloom", [2] = "Kingsblood" }
+local function gmCoord(x, y) return math.floor(x * 100) * 1000000 + math.floor(y * 100) * 100 end
+local herbs = {}
+local function addSpot(id, x, y)
+  for i = 0, 2 do herbs[gmCoord(x + i * 0.4, y)] = id end
+end
+addSpot(1, 20, 20); addSpot(1, 60, 20); addSpot(1, 60, 60); addSpot(1, 20, 60)  -- Peacebloom square
+addSpot(2, 40, 40); addSpot(2, 80, 80); addSpot(2, 80, 20)                      -- Kingsblood (skill 125)
+GatherMate2HerbDB = { [1440] = herbs }
+-- the other GatherMate2 databases: not installed
+GatherMate2MineDB, GatherMate2FishDB, GatherMate2TreasureDB = false, false, false
+GatherMateData2MineDB, GatherMateData2HerbDB, GatherMateData2FishDB, GatherMateData2TreasureDB = false, false, false, false
+LibStub = function()
+  return { GetAddon = function()
+    return { GetNameForNode = function(_, _, id) return HERB_NAMES[id] end }
+  end }
+end
+
 assert(loadfile("GoblinCompass/GoblinCompass.lua"))("GoblinCompass")
 
 local ev
@@ -198,7 +220,7 @@ test("Manual mode ignores tracking; Automatic picks it up again", function()
   track("Find Herbs")
   check(#printed == n, "manual mode auto-picked: " .. last())
   gc("auto")
-  check(last(1):find("Herbalism"), last(1))
+  check(last(1):find("Peacebloom"), last(1))  -- Ashenvale has herb data, so a generated route
 end)
 
 test("/gc routes lists every route, including herb ones", function()
@@ -223,6 +245,93 @@ test("route recorder: spacing, manual points, and output that loads back", funct
   check(entry:find("pts={ 40,30, 45,30, 45,36, 45,36 }", 1, true), entry)
   local route = assert(loadstring("return " .. entry:gsub(",%s*$", "")))()
   check(route.prof == "Herbalism" and route.map == 1413 and #route.pts == 8)
+end)
+
+---------------------------------------------------------------------------
+-- Generated routes
+---------------------------------------------------------------------------
+local function loopLength(pts)
+  local n, len = #pts / 2, 0
+  for i = 1, n do
+    local j = i % n + 1
+    len = len + math.sqrt((pts[2 * j - 1] - pts[2 * i - 1]) ^ 2 + (pts[2 * j] - pts[2 * i]) ^ 2)
+  end
+  return len
+end
+
+test("loop planner: random spots give a loop with no crossings, visiting each once", function()
+  local function crosses(p1, p2, p3, p4)
+    local function side(a, b, c) return (b.wx - a.wx) * (c.wy - a.wy) - (b.wy - a.wy) * (c.wx - a.wx) end
+    return side(p1, p2, p3) * side(p1, p2, p4) < 0 and side(p3, p4, p1) * side(p3, p4, p2) < 0
+  end
+  math.randomseed(42)
+  for round = 1, 20 do
+    local spots = {}
+    for i = 1, 30 do spots[i] = { wx = math.random() * 5000, wy = math.random() * 5000 } end
+    local tour = GOBLINCOMPASS_TEST.PlanLoop(spots)
+    check(#tour == 30, "tour has " .. #tour .. " stops")
+    local seen = {}
+    for _, t in ipairs(tour) do check(not seen[t], "a spot is visited twice"); seen[t] = true end
+    for i = 1, 30 do
+      for j = i + 2, 30 do
+        if not (i == 1 and j == 30) then
+          check(not crosses(tour[i], tour[i % 30 + 1], tour[j], tour[j % 30 + 1]),
+            "round " .. round .. ": legs " .. i .. " and " .. j .. " cross")
+        end
+      end
+    end
+  end
+end)
+
+test("Find Herbs in a zone with no planned route generates one from GatherMate2", function()
+  SIM.map, SIM.herb = 1440, 50
+  track("Find Minerals"); track("Find Herbs")
+  check(last():find("Peacebloom") and last():find("generated"), last())
+end)
+
+test("generated route: 4 Peacebloom spots, shortest loop (the square, not the bow-tie)", function()
+  SIM.herb = 50
+  gc("generate herb")
+  local found
+  for i = #printed, 1, -1 do
+    if printed[i]:find("generated a Herbalism route") then found = printed[i]; break end
+  end
+  check(found and found:find("4 spots %(12 nodes%)"), tostring(found))
+  gc("generate save")
+  local entry = GoblinCompassDB.recorded[#GoblinCompassDB.recorded]
+  local route = assert(loadstring("return " .. entry:gsub(",%s*$", "")))()
+  check(route.ore == "Peacebloom" and route.prof == "Herbalism" and route.map == 1440, entry)
+  check(#route.pts == 8, entry)
+  -- the square's perimeter is 4 x 40 = 160 map-%; crossing it would be ~193
+  check(math.abs(loopLength(route.pts) - 160) < 2, "loop length " .. loopLength(route.pts) .. ": " .. entry)
+end)
+
+test("higher skill adds Kingsblood spots", function()
+  SIM.herb = 130
+  gc("generate herb")
+  local found
+  for i = #printed, 1, -1 do
+    if printed[i]:find("generated a Herbalism route") then found = printed[i]; break end
+  end
+  check(found and found:find("7 spots %(21 nodes%)"), tostring(found))
+end)
+
+test("/gc generate <name> builds a route for just that herb", function()
+  gc("generate kingsblood")
+  check(last():find("Kingsblood"), last())
+end)
+
+test("too few spots: says so and starts nothing", function()
+  SIM.herb = 50
+  gc("generate kingsblood")
+  check(last():find("no Herbalism nodes matching 'kingsblood'"), last())
+end)
+
+test("with auto-generate off, Find Herbs falls back to node mode", function()
+  GoblinCompassDB.autoGenerate = false
+  track("Find Minerals"); track("Find Herbs")
+  check(last():find("Herbalism node"), last())
+  GoblinCompassDB.autoGenerate = nil
 end)
 
 test("bundled routes are well-formed", function()

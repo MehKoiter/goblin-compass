@@ -72,6 +72,7 @@ Spend most of your time on the area you changed, but run through all of it:
 - [ ] **Manual:** picking a profession or route on the options page works
 - [ ] **Node mode** (GatherMate2 installed): the arrow points at a real node, and the node is skipped after gathering
 - [ ] **Route mode:** the arrow walks the loop; Skip and reverse work
+- [ ] **Generated routes:** Find Herbs in a zone with no planned route builds a loop through real herb spots; `/gc generate <herb>` works
 - [ ] Changing zone, and `/reload` in the middle of a route, don't break anything
 - [ ] `/gc debug` prints sensible output
 
