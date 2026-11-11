@@ -65,21 +65,12 @@ See **[docs/adding-routes.md](docs/adding-routes.md)** for the route format, the
 - The bundled routes are mining only so far. Herbalism, Fishing and Treasure use node mode until someone adds routes for them.
 - Developed without access to a live client, so please report anything odd (include the output of `/gc debug`).
 
-## Releasing
+## Testing and releasing
 
-Pushing a version tag builds the addon zip and publishes it, using the
-[BigWigs packager](https://github.com/BigWigsMods/packager) (`.github/workflows/release.yml`, `.pkgmeta`).
+- **Tests:** `lua5.1 tests/run.lua` runs the logic tests. They also run automatically on every pull request.
+- **Release:** publish a GitHub release with a tag like `v1.1.0`. The workflow builds the zip and uploads it to CurseForge. Use a tag like `v1.1.0-beta1` to ship a beta first.
 
-```bash
-git tag v0.9
-git push origin v0.9
-```
-
-- The tag becomes the version shown in game (`## Version: @project-version@` in the TOC).
-- A GitHub release with the zip is always created.
-- Uploading to CurseForge needs one secret under **Settings > Secrets and variables > Actions**:
-  - secret `CF_API_KEY`: a CurseForge API token (CurseForge > account settings > API tokens)
-  - the CurseForge project ID is already in the TOC (`## X-Curse-Project-ID`), so no variable is needed
+Full steps, the in-game test checklist and setup notes: **[docs/releasing.md](docs/releasing.md)**.
 
 ## Credits
 

@@ -6,6 +6,7 @@ ignore:
   - README.md
   - docs
   - media
+  - tests
   - tools
 
 move-folders:
